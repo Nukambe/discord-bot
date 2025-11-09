@@ -76,9 +76,7 @@ export async function resolveTodaysUrl(date = new Date()) {
   const fromTag = await findViaTagPages(prefix);
   if (fromTag) return fromTag;
 
-  throw new Error(
-    `Could not locate Today's Events URL for prefix: ${prefix}. Checked exact, /tag/events (1–3), and /rss.`
-  );
+  return null;
 }
 
 export async function fetchMonopolyGoHtml(url = null, date = new Date()) {

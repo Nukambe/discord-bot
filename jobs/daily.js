@@ -13,26 +13,46 @@ function getOverrideDateFromArgv() {
   return d;
 }
 
-async function main() {
-  const date = getOverrideDateFromArgv() ?? new Date();
-  const url = await resolveTodaysUrl(date);       // 👈 use the resolver
-  console.log('[daily] URL:', url);
+function nyDateLabel(d) {
+  return d.toLocaleDateString('en-US', { timeZone: 'America/New_York', year: 'numeric', month: 'short', day: '2-digit' });
+}
 
-  const html = await fetchMonopolyGoHtml(url);    // you can pass url explicitly
-  const payload = formatMonopolyGoForDiscord(html, { sourceUrl: url });
+async function main() {
+  // Default to tomorrow (unless --date= is supplied)
+  const baseDate = getOverrideDateFromArgv() ?? (() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d;
+  })();
 
   const client = new Client({ intents: [GatewayIntentBits.Guilds] });
   await client.login(process.env.BOT_TOKEN);
-
-  // v15-safe: wait for clientReady instead of "ready"
   await new Promise(res => client.once(Events.ClientReady, res));
-
   const channel = await client.channels.fetch(process.env.CHANNEL_ID);
-  await channel.send(payload);
-  client.destroy();
+
+  try {
+    const url = await resolveTodaysUrl(baseDate);
+    console.log("url", url);
+    if (!url) {
+      await channel.send(`Heads up: I couldn’t find a Monopoly GO! Wiki page for **${nyDateLabel(baseDate)}** yet. It may not be published. Here is a link to all events: https://monopolygo.wiki/tag/events/`);
+      client.destroy();
+      return;
+    }
+
+    console.log('[daily] URL:', url);
+    const html = await fetchMonopolyGoHtml(url);
+    const payload = formatMonopolyGoForDiscord(html, { sourceUrl: url });
+    await channel.send(payload);
+  } catch (err) {
+    // Resolver or fetch/format failed — still notify in Discord
+    console.error('[daily] Error:', err?.stack || err);
+    await channel.send(`Heads up: I couldn’t find or parse the page for **${nyDateLabel(baseDate)}**. (${err?.message || 'Unknown error'})`);
+  } finally {
+    client.destroy();
+  }
 }
 
 main().catch(e => {
-  console.error('[daily] Error:', e.stack || e.message || e);
+  console.error('[daily] Fatal:', e?.stack || e);
   process.exit(1);
 });
