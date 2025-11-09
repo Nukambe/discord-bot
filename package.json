@@ -1,0 +1,26 @@
+{
+  "name": "discord-bot",
+  "version": "1.0.0",
+  "description": "",
+  "homepage": "https://github.com/Nukambe/discord-bot#readme",
+  "bugs": {
+    "url": "https://github.com/Nukambe/discord-bot/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Nukambe/discord-bot.git"
+  },
+  "license": "ISC",
+  "author": "Wesley Chappell",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "cheerio": "^1.1.2",
+    "discord.js": "^14.24.2",
+    "dotenv": "^17.2.3"
+  }
+}
