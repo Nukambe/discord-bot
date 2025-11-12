@@ -32,7 +32,7 @@ export default {
     // Only pick multiplier if yes
     let reply = `🎰 **Monopoly GO High Roller Oracle**\n\n${decision}`;
 
-    const multipliers = isYes ? ["x1000", "x500", "x200"] : ["x20", "x10", "x5", "x2", "x1"];
+    const multipliers = isYes ? ["x1000", "x500", "x200"] : ["x100", "x50", "x20", "x10", "x5", "x2", "x1"];
     const multiplier = multipliers[Math.floor(Math.random() * multipliers.length)];
     reply += `\nRecommended Multiplier: **${multiplier}**`;
 

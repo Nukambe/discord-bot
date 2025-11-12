@@ -176,9 +176,9 @@ client.once(Events.ClientReady, async () => {
     );
     // Gift rotation: every Tuesday (2) and Saturday (6) at 7:30 PM Eastern
     cron.schedule(
-        "30 19 * * 2,6", // minute hour day month dayOfWeek (0=Sun, 2=Tue, 6=Sat)
+        "30 19 * * 0,3", // minute hour day month dayOfWeek (0=Sun, 3=Wed)
         async () => {
-            console.log("🎁 Running gift rotation (Tue/Sat 7:30 PM EST)...");
+            console.log("🎁 Running gift rotation (Sun/Wed 7:30 PM EST)...");
 
             try {
                 await runGiftRotation(client);
