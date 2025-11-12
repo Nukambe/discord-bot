@@ -1,12 +1,9 @@
 import { REST, Routes } from "discord.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import "dotenv/config";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-async function main() {
+export async function deployCommands() {
   const commandsPath = path.resolve("apps/familygo/commands");
   const { commands, jsonForDeploy } = await loadCommands(commandsPath);
   console.log(`🧩 Loaded ${commands.size} commands`);
@@ -24,5 +21,3 @@ async function main() {
     console.error("💥 Command registration failed:", err);
   }
 }
-
-main();

@@ -8,6 +8,9 @@ import { postEvent } from "./postEvent.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import path from "node:path";
 import "dotenv/config";
+import { deployCommands } from "./deploy-commands.js";
+
+deployCommands();
 
 const client = new Client({
     intents: [
