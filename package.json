@@ -21,6 +21,9 @@
   "dependencies": {
     "cheerio": "^1.1.2",
     "discord.js": "^14.24.2",
-    "dotenv": "^17.2.3"
+    "dotenv": "^17.2.3",
+    "node-cron": "^4.2.1",
+    "playwright": "^1.56.1",
+    "tmi.js": "^1.8.5"
   }
 }

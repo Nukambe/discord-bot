@@ -9,7 +9,7 @@ import * as cheerio from 'cheerio';
  * @param {number} [opts.maxImageEmbeds=4] - Extra image-only embeds (in addition to the main one).
  * @returns {{ content: string, embeds: Array<object> }}
  */
-export function formatMonopolyGoForDiscord(html, opts = {}) {
+export function parseMonopolyEventPage(html, opts = {}) {
   const { sourceUrl, maxFields = 12, maxImageEmbeds = 4 } = opts;
   const $ = cheerio.load(html);
 
