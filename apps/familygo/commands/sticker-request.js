@@ -1,5 +1,5 @@
 // apps/familygo/commands/sticker-request.js
-import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
+import { SlashCommandBuilder } from "discord.js";
 
 const GIF_URL =
   "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842";
@@ -20,11 +20,13 @@ export default {
   async execute(interaction) {
     const user = interaction.options.getUser("person");
 
-    const embed = new EmbedBuilder()
-      .setDescription(`🧩 **Sticker Request**\nHey <@${user.id}>, got any spare stickers? 👀`)
-      .setImage(GIF_URL)
-      .setColor(0x00aeff);
+    const message = [
+      `🧩 **Sticker Request**`,
+      `Hey <@${user.id}>, got any spare stickers? 👀`,
+      "",
+      GIF_URL,
+    ].join("\n");
 
-    await interaction.reply({ embeds: [embed] });
+    await interaction.reply(message);
   },
 };
