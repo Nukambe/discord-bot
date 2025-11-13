@@ -19,7 +19,7 @@ export default {
     for (const [tier, items] of Object.entries(tierList)) {
       await client.say(channel, `${tier} — ${items.join(', ')}`);
     }
-    await client.say("Characters with an '*': I don't know enough about.");
+    await client.say(channel, "Characters with an '*': I don't know enough about.");
 
     // Twitch has a 500-char limit per message → chunk just in case
     // const chunks = chunkMessages(lines, 450);
