@@ -13,6 +13,7 @@ export default {
         try {
             const dateSlug = formatDateSlug(new Date());
             await postEventToDiscord(interaction.client, dateSlug);
+            await interaction.editReply("✅ Post daily events executed successfully.");
         } catch (err) {
             console.error("💥 Post daily command failed:", err);
             await interaction.editReply("❌ Failed to run post daily events.");
