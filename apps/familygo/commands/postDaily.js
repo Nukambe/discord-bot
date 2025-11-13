@@ -8,7 +8,14 @@ export default {
         .setDescription("Post the daily events."),
     cooldown: 3,
     async execute(interaction) {
-        const dateSlug = formatDateSlug(new Date());
-        await postEventToDiscord(interaction.client, dateSlug);
+        await interaction.deferReply({ ephemeral: true });
+
+        try {
+            const dateSlug = formatDateSlug(new Date());
+            await postEventToDiscord(interaction.client, dateSlug);
+        } catch (err) {
+            console.error("💥 Post daily command failed:", err);
+            await interaction.editReply("❌ Failed to run post daily events.");
+        }
     },
 };
