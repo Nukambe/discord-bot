@@ -1,5 +1,5 @@
 import { SlashCommandBuilder } from "discord.js";
-import { getTomorrowSlug } from "../../../util/dateUtils.js";
+import { formatDateSlug } from "../../../util/dateUtils.js";
 import { postEventToDiscord } from "../index.js";
 
 export default {
@@ -8,7 +8,7 @@ export default {
         .setDescription("Post the daily events."),
     cooldown: 3,
     async execute(interaction) {
-        const dateSlug = getTomorrowSlug();
+        const dateSlug = formatDateSlug(new Date());
         await postEventToDiscord(interaction.client, dateSlug);
     },
 };
