@@ -24,7 +24,7 @@ const client = new Client({
 client.commands = new Collection();
 const cooldowns = new Collection();
 
-const postEventToDiscord = async (client, dateSlug) => {
+export const postEventToDiscord = async (client, dateSlug) => {
     console.log(`🌀 Starting postEventToDiscord for date: ${dateSlug}`);
 
     // Step 1: Retrieve HTML
