@@ -11,7 +11,7 @@ export default {
     const tierList = {
       S: ['Wade'],
       A: ['Rodman', 'Westbrook', 'James Jonah Jameson', 'SGA', 'Tatum', 'Olajuwon', 'Kidd', 'Murray', 'George', 'Lopez', 'Durant', 'Embiid', 'Leonard', 'Davis', 'Gasol'],
-      B: ['James', 'Giannis', 'Jokic', 'Curry', 'Paul', 'Doncic', 'Zion', 'Booker', 'McCollum*', 'Clarkson', 'Nowitzky', 'Wiggins', 'DeRozan*'],
+      B: ['James', 'Giannis', 'Jokic', 'Curry', 'Paul', 'Doncic', 'Zion', 'Booker', 'McCollum*', 'Clarkson', 'Nowitzky', 'Wiggins*', 'DeRozan*'],
       C: ['Lavine', 'Thompson', 'Capela', 'Anderson*', 'Fu Zhi', 'Julio', 'Ingram*', 'Porzingis', 'Adebayo*'],
       D: ['Shining Players...'],
     };
