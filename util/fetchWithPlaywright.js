@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 
 /**
  * Fetch a Monopoly GO wiki page using a real browser.
@@ -9,7 +9,7 @@ export async function fetchWithPlaywright(url) {
   console.log('[Playwright] Launching browser...');
   const browser = await chromium.launch({
     headless: true,
-    executablePath: '/app/.chrome-for-testing/chrome-linux64/chrome',
+    
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
