@@ -9,6 +9,7 @@ export async function fetchWithPlaywright(url) {
   console.log('[Playwright] Launching browser...');
   const browser = await chromium.launch({
     headless: true,
+    executablePath: '/app/.chrome-for-testing/chrome-linux64/chrome',
     args: ['--no-sandbox', '--disable-setuid-sandbox'],
   });
 
