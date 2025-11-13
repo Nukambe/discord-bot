@@ -4,6 +4,7 @@ import { loadCommands } from './lib/commandLoader.js';
 import { parseCommand, isModOrBroadcaster, safeSay } from './lib/utils.js';
 import { onCooldown } from './lib/cooldown.js';
 import 'dotenv/config';
+import { persistRefreshToHeroku } from './lib/persistRefreshToken.js';
 
 // --- load commands from ./commands ---
 const registry = await loadCommands(); // Map<name|alias, def>
@@ -53,7 +54,12 @@ async function exchangeRefreshToken() {
   const data = await res.body.json();
   // data: { access_token, refresh_token, expires_in, ... }
   accessToken = data.access_token;
-  if (data.refresh_token) refreshToken = data.refresh_token; // Twitch may rotate it
+  if (data.refresh_token) {
+    // Twitch may rotate it
+    await persistRefreshToHeroku(data.refresh_token);
+    process.env.TWITCH_REFRESH = data.refresh_token;
+    refreshToken = data.refresh_token;
+  }; 
   scheduleRefresh(data.expires_in);
   return accessToken;
 }

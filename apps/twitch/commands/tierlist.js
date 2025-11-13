@@ -11,9 +11,9 @@ export default {
     // 💡 define your tier list here:
     const tierList = {
       S: ['Wade'],
-      A: ['Rodman', 'Westbrook', 'James Jonah Jameson', 'SGA', 'Tatum', 'Hakeem', 'Kidd', 'Murray', 'George', 'Lopez', 'Durant', 'Embiid', 'Leonard'],
-      B: ['James', 'Giannis', 'Jokic', 'Curry', 'Paul', 'Doncic', 'Zion', 'Booker', 'McCollum', 'Clarkson*'],
-      C: ['Lavine', 'Thompson', 'Capela', 'Anderson*', 'Fu Zhi', 'Julio'],
+      A: ['Rodman', 'Westbrook', 'James Jonah Jameson', 'SGA', 'Tatum', 'Olajuwon', 'Kidd', 'Murray', 'George', 'Lopez', 'Durant', 'Embiid', 'Leonard', 'Davis', 'Gasol'],
+      B: ['James', 'Giannis', 'Jokic', 'Curry', 'Paul', 'Doncic', 'Zion', 'Booker', 'McCollum*', 'Clarkson', 'Nowitzky', 'Wiggins', 'DeRozan*'],
+      C: ['Lavine', 'Thompson', 'Capela', 'Anderson*', 'Fu Zhi', 'Julio', 'Ingram*', 'Porzingis', 'Adebayo*'],
       D: ['Shining Players...'],
     };
 
@@ -21,6 +21,7 @@ export default {
     for (const [tier, items] of Object.entries(tierList)) {
       lines.push(`${tier} — ${items.join(', ')}`);
     }
+    lines.push("Characters with an '*': I don't know enough about.");
 
     // Twitch has a 500-char limit per message → chunk just in case
     const chunks = chunkMessages(lines, 450);
