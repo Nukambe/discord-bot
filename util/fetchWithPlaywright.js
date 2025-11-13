@@ -1,4 +1,4 @@
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-core';
 
 /**
  * Fetch a Monopoly GO wiki page using a real browser.
