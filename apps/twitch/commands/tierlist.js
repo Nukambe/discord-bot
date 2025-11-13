@@ -8,7 +8,6 @@ export default {
   cooldownMs: 4000,
 
   async exec({ channel, client }) {
-    // 💡 define your tier list here:
     const tierList = {
       S: ['Wade'],
       A: ['Rodman', 'Westbrook', 'James Jonah Jameson', 'SGA', 'Tatum', 'Olajuwon', 'Kidd', 'Murray', 'George', 'Lopez', 'Durant', 'Embiid', 'Leonard', 'Davis', 'Gasol'],
@@ -17,18 +16,17 @@ export default {
       D: ['Shining Players...'],
     };
 
-    const lines = [];
     for (const [tier, items] of Object.entries(tierList)) {
-      lines.push(`${tier} — ${items.join(', ')}`);
+      client.say(channel, `${tier} — ${items.join(', ')}`);
     }
-    lines.push("Characters with an '*': I don't know enough about.");
+    client.say("Characters with an '*': I don't know enough about.");
 
     // Twitch has a 500-char limit per message → chunk just in case
-    const chunks = chunkMessages(lines, 450);
+    // const chunks = chunkMessages(lines, 450);
 
-    for (const msg of chunks) {
-      await client.say(channel, msg);
-    }
+    // for (const msg of chunks) {
+    //   await client.say(channel, msg);
+    // }
   },
 };
 
