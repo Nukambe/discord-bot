@@ -39,8 +39,12 @@ export default {
         const decisions = isYes ? yesResponses : noResponses;
         const decision = decisions[Math.floor(Math.random() * decisions.length)];
 
-        let reply = `🎰 **Monopoly GO Vault Oracle**\n\n${decision}`;
+        const replyLines = [
+            `🎰 **Monopoly GO Vault Oracle**`,
+            "To boom or not to boom? Will you trust what Baldy says?",
+            decision,
+        ];
 
-        await interaction.reply(reply);
+        await interaction.reply(replyLines.join("\n"));
     },
 };
