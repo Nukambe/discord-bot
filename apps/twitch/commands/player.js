@@ -1,6 +1,6 @@
 const playerNotes = {
   "Wade": "Legend - Best Scorer. Too many options/failsafes",
-  "Rodman": "Legend - Best rebounder. Insane sprint cooldown reset ability. Insane dive.",
+  "Rodman": "Legend - Best rebounder. Insane sprint cooldown reset ability. Insane dive. Dirk counter. GOAT.",
   "Westbrook": "Superstar - Fastest character? Great intercept ability. Wide dribbles that can be hard to guard solo.",
   "JJJ": "Elite - Great blocker and can space the floor.",
   "J3": "Elite - Great blocker and can space the floor.",

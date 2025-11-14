@@ -3,8 +3,9 @@ import { request } from 'undici';
 import { loadCommands } from './lib/commandLoader.js';
 import { parseCommand, isModOrBroadcaster, safeSay } from './lib/utils.js';
 import { onCooldown } from './lib/cooldown.js';
-import 'dotenv/config';
 import { persistRefreshToHeroku } from './lib/persistRefreshToken.js';
+import { sanitizeInput } from "../../util/sanitize.js";
+import 'dotenv/config';
 
 // --- load commands from ./commands ---
 const registry = await loadCommands(); // Map<name|alias, def>
@@ -91,7 +92,8 @@ function scheduleRefresh(expiresInSec) {
 client.on('message', async (channel, tags, message, self) => {
   if (self) return;
 
-  const parsed = parseCommand(message.trim());
+  const clean = sanitizeInput(message.trim());
+  const parsed = parseCommand(clean);
   if (!parsed) return;
 
   const def = registry.get(parsed.name);

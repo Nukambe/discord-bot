@@ -1,6 +1,6 @@
 import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import cron from 'node-cron';
-import { getTomorrowSlug } from "../../util/dateUtils.js";
+import { formatDateSlug, getTomorrowSlug } from "../../util/dateUtils.js";
 import { formatMogoDiscordMessage } from "./formatEvent.js";
 import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
@@ -169,7 +169,7 @@ client.once(Events.ClientReady, async () => {
         '30 19 * * *',
         async () => {
             console.log('Running daily script (7:30 PM EST)...');
-            const dateSlug = getTomorrowSlug();
+            const dateSlug = formatDateSlug(new Date());
             await postEventToDiscord(client, dateSlug);
         },
         { timezone: 'America/New_York' }

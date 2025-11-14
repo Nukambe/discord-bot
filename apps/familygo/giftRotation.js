@@ -109,6 +109,7 @@ export async function runGiftRotation(client, opts = {}) {
       `Everyone send your gifts to ${chosenRef}!`,
       "",
       `**Gifters this round:** ${giftersLine}`, // includes exempt + pool (minus chosen)
+      "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
     ];
     await chosenChan.send(announceLines.join("\n"));
   } else {
