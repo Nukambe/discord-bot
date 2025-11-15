@@ -49,12 +49,14 @@ export default {
   cooldownMs: 3000,
 
   async exec({ channel, args, client }) {
+    console.log("!player args:", args);
     if (!args.length) {
       await client.say(channel, 'Usage: !player <name>');
       return;
     }
 
     const query = args.join(' ').toLowerCase();
+    console.log("!player query:", query);
 
     const notes = playerNotes[query];
 
