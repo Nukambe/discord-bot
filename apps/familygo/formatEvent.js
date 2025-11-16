@@ -194,8 +194,26 @@ function buildQuickWinsField(bullets) {
   };
 }
 
+// Convert any date-like string/Date to a formatted Eastern Time string
+function toEastern(dateLike) {
+  if (!dateLike) return null;
+
+  const d = new Date(dateLike); // server is UTC; this is fine
+
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',   // <-- force ET
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(d);
+}
+
 function parseBullet(line, pageDateStr) {
-  const name = (line.match(/\*\*(.+?)\*\*/) || [,"Event"])[1].trim();
+  const name = (line.match(/\*\*(.+?)\*\*/) || [, "Event"])[1].trim();
 
   const durMatch = line.match(/Duration:\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
   const durationHMS = durMatch?.[1] || null;
@@ -213,21 +231,31 @@ function parseBullet(line, pageDateStr) {
   }
 
   const hasEndDate = /[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/.test(endRaw);
-  const end = hasEndDate ? niceDateTime(endRaw) : null;
+  const rawEndDateTime = hasEndDate ? niceDateTime(endRaw) : null;
+  const end = rawEndDateTime ? toEastern(rawEndDateTime) : null;
   const endTimeOnly = !hasEndDate ? stripSeconds(endRaw) : "";
 
   const startHasDate = /[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/.test(startRaw);
-  const start = startHasDate
-    ? niceDateTime(startRaw)
-    : (pageDateStr && startRaw ? `${longDateOf(pageDateStr)} ${stripSeconds(startRaw)}` : null);
+
+  let rawStartDateTime = null;
+  if (startHasDate) {
+    // full date+time in the string
+    rawStartDateTime = niceDateTime(startRaw);
+  } else if (pageDateStr && startRaw) {
+    // same page date, time only in bullet
+    const combined = `${longDateOf(pageDateStr)} ${stripSeconds(startRaw)}`;
+    rawStartDateTime = niceDateTime(combined);
+  }
+
+  const start = rawStartDateTime ? toEastern(rawStartDateTime) : null;
   const startTimeOnly = (!start && startRaw) ? stripSeconds(startRaw) : "";
 
   return {
     name,
-    start,
-    end,
-    startTimeOnly,
-    endTimeOnly,
+    start,          // formatted in America/New_York
+    end,            // formatted in America/New_York
+    startTimeOnly,  // still raw time-only fallback
+    endTimeOnly,    // still raw time-only fallback
     durationHMS,
   };
 }
