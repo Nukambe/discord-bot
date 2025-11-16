@@ -10,6 +10,18 @@ import 'dotenv/config';
 // --- load commands from ./commands ---
 const registry = await loadCommands(); // Map<name|alias, def>
 
+async function validateToken(token) {
+  const res = await request(`https://id.twitch.tv/oauth2/validate`, {
+    headers: { Authorization: `OAuth ${token}` }
+  });
+
+  if (res.statusCode === 200) {
+    return true;
+  }
+
+  return false;
+}
+
 let accessToken = process.env.TWITCH_OAUTH_TOKEN?.replace(/^oauth:/, ''); // raw token (no 'oauth:')
 let refreshToken = process.env.TWITCH_REFRESH;
 const clientId = process.env.TWITCH_CLIENT_ID;
@@ -28,6 +40,13 @@ function makeClient(token) {
     channels,
     connection: { reconnect: true },
   });
+}
+
+let isValid = await validateToken(accessToken);
+
+if (!isValid) {
+  console.log("❗ Access token invalid, refreshing...");
+  accessToken = await exchangeRefreshToken();
 }
 
 let client = makeClient(accessToken);
