@@ -4,30 +4,22 @@ import { loadCommands } from './lib/commandLoader.js';
 import { parseCommand, isModOrBroadcaster, safeSay } from './lib/utils.js';
 import { onCooldown } from './lib/cooldown.js';
 import { persistRefreshToHeroku } from './lib/persistRefreshToken.js';
-import { sanitizeInput } from "../../util/sanitize.js";
+import { sanitizeInput } from '../../util/sanitize.js';
 import 'dotenv/config';
 
 // --- load commands from ./commands ---
 const registry = await loadCommands(); // Map<name|alias, def>
 
-async function validateToken(token) {
-  const res = await request(`https://id.twitch.tv/oauth2/validate`, {
-    headers: { Authorization: `OAuth ${token}` }
-  });
-
-  if (res.statusCode === 200) {
-    return true;
-  }
-
-  return false;
-}
-
+// --- token & client config ---
 let accessToken = process.env.TWITCH_OAUTH_TOKEN?.replace(/^oauth:/, ''); // raw token (no 'oauth:')
 let refreshToken = process.env.TWITCH_REFRESH;
 const clientId = process.env.TWITCH_CLIENT_ID;
 const clientSecret = process.env.TWITCH_CLIENT_SECRET;
 
 const channels = [process.env.TWITCH_CHANNEL];
+
+// --- refresh timer state (must be defined BEFORE scheduleRefresh is ever used) ---
+let refreshTimer = null;
 
 // --- tmi.js client factory (so we can rebuild with new token) ---
 function makeClient(token) {
@@ -42,16 +34,33 @@ function makeClient(token) {
   });
 }
 
-let isValid = await validateToken(accessToken);
+// ---- token refresh helpers ----
+function scheduleRefresh(expiresInSec) {
+  // refresh a bit early (e.g., 5 minutes before)
+  const early = Math.max(60, expiresInSec - 300);
 
-if (!isValid) {
-  console.log("❗ Access token invalid, refreshing...");
-  accessToken = await exchangeRefreshToken();
+  if (refreshTimer) {
+    clearTimeout(refreshTimer);
+  }
+
+  refreshTimer = setTimeout(async () => {
+    try {
+      console.log('🔄 Refreshing Twitch access token…');
+      const newToken = await exchangeRefreshToken();
+
+      // Hot-swap credentials and reconnect
+      client.opts.identity.password = `oauth:${newToken}`;
+      await client.disconnect();
+      await client.connect();
+      console.log('✅ Reconnected with fresh token');
+    } catch (err) {
+      console.error('❌ Token refresh error:', err);
+      // Backoff retry after 60s
+      refreshTimer = setTimeout(scheduleRefresh, 60_000, 600);
+    }
+  }, early * 1000);
 }
 
-let client = makeClient(accessToken);
-
-// ---- token refresh helpers ----
 async function exchangeRefreshToken() {
   const body = new URLSearchParams({
     client_id: clientId,
@@ -74,40 +83,60 @@ async function exchangeRefreshToken() {
   const data = await res.body.json();
   // data: { access_token, refresh_token, expires_in, ... }
   accessToken = data.access_token;
+
   if (data.refresh_token) {
     // Twitch may rotate it
     await persistRefreshToHeroku(data.refresh_token);
     process.env.TWITCH_REFRESH = data.refresh_token;
     refreshToken = data.refresh_token;
-  }; 
-  scheduleRefresh(data.expires_in);
+  }
+
+  // schedule next refresh based on new token's TTL
+  if (data.expires_in) {
+    scheduleRefresh(data.expires_in);
+  }
+
   return accessToken;
 }
 
-let refreshTimer = null;
-function scheduleRefresh(expiresInSec) {
-  // refresh a bit early (e.g., 5 minutes before)
-  const early = Math.max(60, expiresInSec - 300);
-  if (refreshTimer) clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(async () => {
-    try {
-      console.log('🔄 Refreshing Twitch access token…');
-      const newToken = await exchangeRefreshToken();
+async function validateToken(token) {
+  if (!token) return false;
 
-      // Hot-swap credentials and reconnect
-      client.opts.identity.password = `oauth:${newToken}`;
-      await client.disconnect();
-      await client.connect();
-      console.log('✅ Reconnected with fresh token');
-    } catch (err) {
-      console.error('❌ Token refresh error:', err);
-      // Backoff retry after 60s
-      refreshTimer = setTimeout(scheduleRefresh, 60_000, 600);
-    }
-  }, early * 1000);
+  const res = await request('https://id.twitch.tv/oauth2/validate', {
+    headers: { Authorization: `OAuth ${token}` },
+  });
+
+  return res.statusCode === 200;
 }
 
-// ---- boot and listen to messages ----
+// --- client instance (will be assigned after validation/refresh) ---
+let client;
+
+// ---- bootstrap: validate token, maybe refresh, then create client ----
+{
+  let isValid = false;
+
+  try {
+    isValid = await validateToken(accessToken);
+  } catch (err) {
+    console.error('Error validating access token:', err);
+  }
+
+  if (!isValid) {
+    console.log('❗ Access token invalid, refreshing...');
+    try {
+      accessToken = await exchangeRefreshToken();
+      console.log('✅ Got new access token on startup');
+    } catch (err) {
+      console.error('❌ Failed to refresh token on startup:', err);
+      // At this point, client.connect() will likely fail, but we log clearly.
+    }
+  }
+
+  client = makeClient(accessToken);
+}
+
+// ---- message handlers ----
 client.on('message', async (channel, tags, message, self) => {
   if (self) return;
 
@@ -116,7 +145,7 @@ client.on('message', async (channel, tags, message, self) => {
   if (!parsed) return;
 
   const def = registry.get(parsed.name);
-  if (!def) return; // unknown: ignore or reply if you want
+  if (!def) return; // unknown command
 
   // mod-only?
   if (def.modOnly && !isModOrBroadcaster(tags)) {
@@ -124,7 +153,11 @@ client.on('message', async (channel, tags, message, self) => {
   }
 
   // per-user per-command cooldown
-  const waitMs = onCooldown(parsed.name, tags['user-id'] ?? tags.username, def.cooldownMs);
+  const waitMs = onCooldown(
+    parsed.name,
+    tags['user-id'] ?? tags.username,
+    def.cooldownMs
+  );
   if (waitMs > 0) return; // silent; avoids spam
 
   try {
@@ -144,19 +177,21 @@ client.on('message', async (channel, tags, message, self) => {
 
 // helpful logs
 client.on('connected', (addr, port) => console.log('connected:', addr, port));
-client.on('join', (chan, username, self) => { if (self) console.log('joined as', username); });
+client.on('join', (chan, username, self) => {
+  if (self) console.log('joined as', username);
+});
 client.on('notice', (_ch, id, msg) => console.warn('NOTICE:', id, msg));
 client.on('disconnected', r => console.warn('disconnected:', r));
 
+// ---- connect and start refresh cycle ----
 (async () => {
   try {
     await client.connect();
     console.log('✅ Connected to Twitch chat');
 
-    // kick off the first scheduled refresh using a safe default window
-    // if you know the current token’s real expiry, you can use it;
-    // otherwise, start a conservative cycle (e.g., 50 minutes).
-    scheduleRefresh(3000); // ~50 min
+    // Kick off a conservative refresh cycle if we haven't already scheduled one
+    // (exchangeRefreshToken will also schedule with real expires_in).
+    scheduleRefresh(3000); // ~50 minutes
   } catch (e) {
     console.error('Login/connect error:', e);
   }
