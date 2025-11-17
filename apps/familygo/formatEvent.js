@@ -16,6 +16,7 @@ const EMOJI_MAP = [
   { re: /\brent\s*frenzy\b/i, emoji: "<:NoVacancy:1437570246549700759>" },
   { re: /\bmega\s*heist|\bmega\s*bank\s*heist\b/i, emoji: "<:MegaBankHeist:1437570785685274845>" },
   { re: /\blucky\s*roll\b/i, emoji: "<:LuckyRoll:1437570243768881244>" },
+  { re: /\broll\s*match\b/i, emoji: "<:LuckyRoll:1437570243768881244>" },
   { re: /\blucky\s*chance\b/i, emoji: "<:LuckyChance:1437570240019173516>" },
   { re: /\blandmark\s*rush\b/i, emoji: "<:LandmarkRush:1437570782925684908>" },
   { re: /\bjackpot\s*stash\b.*free\s*parking\b.*roll/i, emoji: "<:JackpotStash_FreeParking_Rolls:1437570235866808330>" },
