@@ -145,7 +145,8 @@ function buildTournamentsField(bullets, pageDateStr) {
       ];
 
       if (durationHMS) {
-        lines.push(`- Duration: \`${prettyDuration(durationHMS)}\``);
+        // Tournament duration is days:hours:minutes
+        lines.push(`- Duration: \`${prettyTournamentDuration(durationHMS)}\``);
       }
 
       return lines.concat("").join("\n");
@@ -179,6 +180,7 @@ function buildFlashEventsField(bullets, pageDateStr) {
       ];
 
       if (durationHMS) {
+        // Flash/other events duration is hours:minutes:seconds
         lines.push(`- Duration: \`${prettyDuration(durationHMS)}\``);
       }
 
@@ -231,7 +233,8 @@ function buildQuickWinsField(bullets) {
 function parseBullet(line /*, pageDateStr */) {
   const name = (line.match(/\*\*(.+?)\*\*/) || [, "Event"])[1].trim();
 
-  const durMatch = line.match(/Duration:\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
+  // Duration is always captured as hh:mm:ss or dd:hh:mm (we treat it as raw)
+  const durMatch = line.match(/Duration:\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2})/i);
   const durationHMS = durMatch?.[1] || null;
 
   const se = line.replace(/^•\s*/, "").split("  •  ")[0];
@@ -309,12 +312,27 @@ function pickEmoji(name) {
   return found ? found.emoji : "•";
 }
 
+/**
+ * Flash/other events duration: hours:minutes:seconds
+ */
 function prettyDuration(hms) {
   const [h, m, s] = hms.split(":").map(n => parseInt(n, 10));
   const parts = [];
   if (h) parts.push(`${h} Hour${h === 1 ? "" : "s"}`);
   if (m) parts.push(`${m} Minute${m === 1 ? "" : "s"}`);
   if (!h && !m && s) parts.push(`${s} Second${s === 1 ? "" : "s"}`);
+  return parts.join(" ");
+}
+
+/**
+ * Tournament duration: days:hours:minutes
+ */
+function prettyTournamentDuration(dhm) {
+  const [d, h, m] = dhm.split(":").map(n => parseInt(n, 10));
+  const parts = [];
+  if (d) parts.push(`${d} Day${d === 1 ? "" : "s"}`);
+  if (h) parts.push(`${h} Hour${h === 1 ? "" : "s"}`);
+  if (m) parts.push(`${m} Minute${m === 1 ? "" : "s"}`);
   return parts.join(" ");
 }
 

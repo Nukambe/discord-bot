@@ -1,14 +1,15 @@
 import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import cron from 'node-cron';
-import { formatDateSlug, getTomorrowSlug } from "../../util/dateUtils.js";
+import { formatDateSlug } from "../../util/dateUtils.js";
 import { formatMogoDiscordMessage } from "./formatEvent.js";
 import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
 import { postEvent } from "./postEvent.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import path from "node:path";
-import "dotenv/config";
+import { runGiftRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
+import "dotenv/config";
 
 deployCommands();
 
