@@ -1,5 +1,3 @@
-import { parseMonopolyEventPage } from "./getEvent.js";
-
 /** Custom emojis for known events (used in headings) */
 const EMOJI_MAP = [
   { re: /\bboard\s*rush\b/i, emoji: "<:BoardRush:1437570220813320221>" },
@@ -27,7 +25,7 @@ const EMOJI_MAP = [
   { re: /\bcarnivalgames\b/i, emoji: "<:carnivalgames:1437914039203270810>" }
 ];
 
-export function formatMogoDiscordMessage(payload) {
+export function formatMogoDiscordMessage(payload, source) {
   if (!payload?.content) return { content: "", embeds: [] };
 
   const parsed = splitIntoSections(payload.content);
@@ -88,7 +86,7 @@ export function formatMogoDiscordMessage(payload) {
       image: { url }
     }));
 
-  return { content: "", embeds: [main, ...imageEmbeds] };
+  return { content: `source: ${source}`, embeds: [main, ...imageEmbeds] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -170,17 +168,9 @@ function buildFlashEventsField(bullets, pageDateStr) {
       const { name, start, end, startTimeOnly, endTimeOnly, durationHMS } = parseBullet(b, pageDateStr);
       const emoji = pickEmoji(name);
 
-      const startText =
-        start ||
-        (pageDateStr && startTimeOnly
-          ? `${longDateOf(pageDateStr)} ${startTimeOnly}`
-          : startTimeOnly || "Unknown");
-
-      const endText =
-        end ||
-        (pageDateStr && endTimeOnly
-          ? `${longDateOf(pageDateStr)} ${endTimeOnly}`
-          : endTimeOnly || "Unknown");
+      // We assume `start`/`end` are already fully formatted from the parser.
+      const startText = start || startTimeOnly || "Unknown";
+      const endText = end || endTimeOnly || "Unknown";
 
       const lines = [
         `${emoji} **${name}**`,
@@ -230,60 +220,15 @@ function buildQuickWinsField(bullets) {
 }
 
 /* ------------------------------------------------------------------ */
-/* Date/time helpers – always ET, formatted like                      */
-/* "Sunday, November 16, 2025 12:59 PM"                               */
+/* Bullet parsing (dates are already formatted upstream)              */
 /* ------------------------------------------------------------------ */
-
-function formatEastern(dateLike) {
-  const d = dateLike instanceof Date ? dateLike : new Date(dateLike);
-  if (Number.isNaN(d.getTime())) return null;
-
-  const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true
-  });
-
-  const parts = formatter.formatToParts(d);
-
-  let weekday = "";
-  let month = "";
-  let day = "";
-  let year = "";
-  let hour = "";
-  let minute = "";
-  let dayPeriod = "";
-
-  for (const { type, value } of parts) {
-    if (type === "weekday") weekday = value;
-    else if (type === "month") month = value;
-    else if (type === "day") day = value;
-    else if (type === "year") year = value;
-    else if (type === "hour") hour = value;
-    else if (type === "minute") minute = value;
-    else if (type === "dayPeriod") dayPeriod = value;
-  }
-
-  if (!weekday || !month || !day || !year || !hour || !minute || !dayPeriod) {
-    // Fallback to whatever the locale gives us
-    return formatter.format(d);
-  }
-
-  // Example: Sunday, November 16, 2025 12:59 PM
-  return `${weekday}, ${month} ${day}, ${year} ${hour}:${minute} ${dayPeriod}`;
-}
 
 /**
  * Parse a bullet line into structured data.
- * All parsed start/end values are formatted in ET as:
- * "Sunday, November 16, 2025 12:59 PM"
+ * We now trust the date/time strings that come from `parseMonopolyEventPage`,
+ * so no more re-formatting here — we just extract them.
  */
-function parseBullet(line, pageDateStr) {
+function parseBullet(line /*, pageDateStr */) {
   const name = (line.match(/\*\*(.+?)\*\*/) || [, "Event"])[1].trim();
 
   const durMatch = line.match(/Duration:\s*([0-9]{2}:[0-9]{2}:[0-9]{2})/i);
@@ -302,32 +247,19 @@ function parseBullet(line, pageDateStr) {
     endRaw = right.trim();
   }
 
-  // END
-  const hasEndDate = /[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/.test(endRaw);
-  const end = hasEndDate ? niceDateTime(endRaw) : null;
-  const endTimeOnly = !hasEndDate ? stripSeconds(endRaw) : "";
+  const start = startRaw || null;
+  const end = endRaw || null;
 
-  // START
-  const startHasDate = /[0-9]{1,2}\/[0-9]{1,2}\/[0-9]{4}/.test(startRaw);
-  let start = null;
-
-  if (startHasDate) {
-    // Full date+time in the string
-    start = niceDateTime(startRaw);
-  } else if (pageDateStr && startRaw) {
-    // Same page date, time only in bullet
-    const combined = `${longDateOf(pageDateStr)} ${stripSeconds(startRaw)}`;
-    start = niceDateTime(combined);
-  }
-
-  const startTimeOnly = !start && startRaw ? stripSeconds(startRaw) : "";
+  // Optional "time only" variants (seconds stripped) if you want them
+  const startTimeOnly = startRaw ? stripSeconds(startRaw) : "";
+  const endTimeOnly = endRaw ? stripSeconds(endRaw) : "";
 
   return {
     name,
-    start,          // fully formatted ET string
-    end,            // fully formatted ET string
-    startTimeOnly,  // raw time-only fallback (e.g., "12:00 PM")
-    endTimeOnly,    // raw time-only fallback
+    start,
+    end,
+    startTimeOnly,
+    endTimeOnly,
     durationHMS
   };
 }
@@ -358,45 +290,14 @@ function extractDateFromTitle(title) {
 }
 
 /**
- * Long date for a given page date string (no time),
- * e.g. "11/16/2025" -> "Sunday, November 16, 2025"
- */
-function longDateOf(pageDateStr) {
-  const d = tryParseDate(pageDateStr);
-  if (!d) return pageDateStr;
-
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric"
-  }).format(d);
-}
-
-/**
- * Convert a string that represents a date/time into our
- * unified ET format "Sunday, November 16, 2025 12:59 PM".
- */
-function niceDateTime(dateStr) {
-  const d = tryParseDate(dateStr);
-  if (!d) return null;
-  return formatEastern(d);
-}
-
-/**
- * Remove seconds from a time string like "12:00:00 PM" -> "12:00 PM"
+ * Remove seconds from a time/date-time string like:
+ * "11/17/2025, 12:00:00 PM" -> "11/17/2025, 12:00 PM"
+ * "12:00:00 PM" -> "12:00 PM"
  */
 function stripSeconds(t) {
   return t
     .replace(/:00(\s*[AP]M)?$/i, "$1")
     .replace(/:([0-5]\d):[0-5]\d/i, ":$1");
-}
-
-function tryParseDate(s) {
-  const cleaned = s.replace(/\s+/g, " ").trim();
-  const d = new Date(cleaned);
-  return Number.isNaN(d.getTime()) ? null : d;
 }
 
 /* ------------------------------------------------------------------ */

@@ -60,7 +60,7 @@ export const postEventToDiscord = async (client, dateSlug) => {
     console.log("🧩 Parsed event data successfully");
 
     // Step 5: Format message for Discord
-    const formatted = formatMogoDiscordMessage(data);
+    const formatted = formatMogoDiscordMessage(data, url);
     console.log("🖋️ Formatted message for Discord embed");
     console.log(`📦 Embeds: ${formatted.embeds.length}`);
     console.log(`🧾 Content preview:\n${formatted.content?.slice(0, 200)}...`);

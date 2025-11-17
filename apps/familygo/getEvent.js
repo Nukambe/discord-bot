@@ -122,7 +122,7 @@ export function parseMonopolyEventPage(html, opts = {}) {
  * Turn one `.event-block` card into a single Discord-friendly line.
  * Handles:
  *  - Event name (bold span or img alt, with safe fallbacks)
- *  - Start/end times from `.local-date`
+ *  - Start/end times from `.local-date` (via data-date UTC timestamp)
  *  - Duration from "Duration:" spans
  *  - Quick Wins rewards from `.reward-item`
  */
@@ -134,11 +134,23 @@ function stringifyEventBlock($block, $) {
     $block.find('img[alt]').first().attr('alt') ||
     'Event';
 
-  // Start/end time(s)
+  // Start/end time(s) – use data-date (UTC timestamp) instead of visible text
   const localDates = $block
     .find('.local-date')
-    .map((__, el) => $(el).text().replace(/\s+/g, ' ').trim())
-    .get();
+    .map((__, el) => {
+      const tsStr = $(el).attr('data-date');
+      if (!tsStr) {
+        // Fallback to whatever text is there, just in case
+        return $(el).text().replace(/\s+/g, ' ').trim();
+      }
+      const ts = Number(tsStr);
+      if (!Number.isFinite(ts)) {
+        return $(el).text().replace(/\s+/g, ' ').trim();
+      }
+      return formatUtcTimestamp(ts);
+    })
+    .get()
+    .filter(Boolean);
 
   // Duration (text like "Duration: 00:30:00")
   let duration = null;
@@ -190,5 +202,32 @@ function safeHostname(url) {
     return new URL(url).hostname;
   } catch {
     return '';
+  }
+}
+
+/**
+ * Convert a Unix timestamp in seconds (UTC) into a formatted local string.
+ * Example input: 1763398800.0  -> "11/17/2025, 12:00:00 PM" (America/New_York)
+ */
+function formatUtcTimestamp(seconds) {
+  const ms = seconds * 1000;
+  const d = new Date(ms);
+  if (Number.isNaN(d.getTime())) return '';
+
+  try {
+    // Adjust as needed; this matches your 11/17/2025, 12:00:00 PM example for EST.
+    return d.toLocaleString('en-US', {
+      timeZone: 'America/New_York',
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    // Fallback: ISO-ish UTC
+    return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
   }
 }
