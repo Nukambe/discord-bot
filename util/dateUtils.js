@@ -33,3 +33,13 @@ export function getTomorrowPrettyDate() {
     day: "numeric",
   });
 }
+
+export function getTodayPrettyDate() {
+  const today = new Date();
+  return today.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
