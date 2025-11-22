@@ -23,7 +23,12 @@ const EMOJI_MAP = [
   { re: /\bjackpot\s*stash\b.*free\s*parking\b.*(cash|money)/i, emoji: "<:JackpotStash_FreeParking_Money:1437570780635332812>" },
   { re: /\bbattleship\b/i, emoji: "<:Battleship_MGW:1437905064260927620>" },
   { re: /\btournament\b/i, emoji: "<:tournament:1437914131180294355>" },
-  { re: /\bcarnivalgames\b/i, emoji: "<:carnivalgames:1437914039203270810>" }
+  { re: /\bcarnivalgames\b/i, emoji: "<:carnivalgames:1437914039203270810>" },
+  { re: /\btycoon\s*racers\b/i, emoji: "<:RaceCup_Currency_Icon:1441936191870992454>" },
+  { re: /\bfortune\s*teller\b/i, emoji: "<:FortuneTeller:1441933906096947300>" },
+  { re: /\btrade\s*fest\b/i, emoji: "<:TradeFest_PillIcon:1441936194379190422>" },
+  { re: /\bprize\s*drop\b/i, emoji: "<:image0:1441934101819949108>" },
+  { re: /\bjackpot\s*stash\b.*(race|racer|cup|currency|racers)/i, emoji: "<:RaceCup_Currency_Icon:1441936191870992454>" },
 ];
 
 export function formatMogoDiscordMessage(payload, source) {

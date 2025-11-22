@@ -40,7 +40,7 @@ export default {
         const decision = decisions[Math.floor(Math.random() * decisions.length)];
 
         const replyLines = [
-            `🎰 **Monopoly GO Vault Oracle**`,
+            `<:IMG_4799:1441934010749157496> **Monopoly GO Vault Oracle**`,
             "To boom or not to boom? Will you trust what Baldy says?",
             decision,
         ];
