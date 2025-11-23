@@ -70,7 +70,26 @@ export async function postEvent({ client, content, embeds = [], debug = false })
 
   const where = debug ? 'TEST_CHANNEL_ID' : 'CHANNEL_ID';
   console.log(`[postEvent] Sent ${sent.length} message(s) to ${where}=${channelId}`);
+
+  forwardImages({ client, content, embeds, debug });
   return sent;
+}
+
+async function forwardImages({ client, content, embeds = [], debug = false }) {
+  const [mainEmbed, ...imageEmbeds] = embeds;
+  const forwardEmbed = {
+    title: mainEmbed.title.replace("Events", "Milestones"),
+    image: mainEmbed.image,
+  };
+
+  const channelId = debug ? process.env.TEST_CHANNEL_ID : process.env.IMG_CHANNEL_ID;
+
+  // Fetch channel
+  const channel = await client.channels.fetch(channelId).catch((e) => {
+    throw new Error(`[postEvent] Failed to fetch channel ${channelId}: ${e?.message || e}`);
+  });
+
+  await channel.send({ content: content, embeds: [forwardEmbed, ...imageEmbeds] });
 }
 
 /**
