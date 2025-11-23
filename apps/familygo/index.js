@@ -9,6 +9,7 @@ import { loadCommands } from "../../util/loadCommands.js";
 import path from "node:path";
 import { runGiftRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
+import { fortuneFlipChannelListener } from "./postInstructions.js";
 import "dotenv/config";
 
 deployCommands();
@@ -160,6 +161,8 @@ const listenForCommands = async (client) => {
             }
         }
     });
+
+    fortuneFlipChannelListener(client);
 };
 
 client.once(Events.ClientReady, async () => {
@@ -191,11 +194,6 @@ client.once(Events.ClientReady, async () => {
         { timezone: "America/New_York" }
     );
     await listenForCommands(client);
-});
-
-client.on(Events.MessageCreate, (m) => {
-    if (m.author.bot) return;
-    if (m.content.trim() === "!ping") m.reply("Pong!");
 });
 
 // graceful shutdown
