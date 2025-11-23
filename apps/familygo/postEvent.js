@@ -71,7 +71,7 @@ export async function postEvent({ client, content, embeds = [], debug = false })
   const where = debug ? 'TEST_CHANNEL_ID' : 'CHANNEL_ID';
   console.log(`[postEvent] Sent ${sent.length} message(s) to ${where}=${channelId}`);
 
-  forwardImages({ client, content, embeds, debug });
+  await forwardImages({ client, content, embeds, debug });
   return sent;
 }
 
