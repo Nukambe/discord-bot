@@ -24,7 +24,9 @@ function scheduleFortuneFlipInstructions(client) {
 
 export function fortuneFlipChannelListener(client) {
   if (!FORTUNE_FLIP_CHANNEL_ID) {
-    console.warn("FORTUNE_FLIP_CHANNEL_ID is not set; listener will not be attached.");
+    console.warn(
+      "FORTUNE_FLIP_CHANNEL_ID is not set; listener will not be attached."
+    );
     return;
   }
 
@@ -47,7 +49,7 @@ export function fortuneFlipChannelListener(client) {
     handleActivity(interaction.channelId);
   });
 
-  scheduleFortuneFlipInstructions(client);
+  // scheduleFortuneFlipInstructions(client);
 }
 
 export async function postInstrctions(client) {
@@ -55,8 +57,28 @@ export async function postInstrctions(client) {
 
   const channel = await client.channels.fetch(FORTUNE_FLIP_CHANNEL_ID);
   if (!channel || !channel.isTextBased()) {
-    console.warn("Fortune Flip channel is not text-based or could not be fetched.");
+    console.warn(
+      "Fortune Flip channel is not text-based or could not be fetched."
+    );
     return;
+  }
+
+  // Delete previous instructions message
+  try {
+    const messages = await channel.messages.fetch({ limit: 100 });
+    const previousInstructions = messages.find(
+      (msg) =>
+        msg.author.id === client.user.id &&
+        msg.embeds.length > 0 &&
+        msg.embeds[0].title ===
+          "<:fortuneFlip:1441956260797747261> Bot Command Guide"
+    );
+
+    if (previousInstructions) {
+      await previousInstructions.delete();
+    }
+  } catch (err) {
+    console.error("Error deleting previous instructions:", err);
   }
 
   // Build command list, filtering out excluded commands
@@ -82,11 +104,13 @@ export async function postInstrctions(client) {
     "• `/<command>` and select it from the menu",
     "",
     "**Available commands:**",
-    ...(commandLines.length ? commandLines : ["• *(No commands registered on this bot instance.)*"]),
+    ...(commandLines.length
+      ? commandLines
+      : ["• *(No commands registered on this bot instance.)*"]),
   ].join("\n");
 
   const embed = new EmbedBuilder()
-    .setColor(0xF5A623)
+    .setColor(0xf5a623)
     .setTitle("<:fortuneFlip:1441956260797747261> Bot Command Guide")
     .setDescription(description);
 
