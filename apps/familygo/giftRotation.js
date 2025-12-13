@@ -7,7 +7,7 @@ const POOL = [
   { id: process.env.WRECKER_USER_ID, channel: process.env.WRECKER_CHANNEL_ID, name: "DaWrecker" },
   { id: process.env.BUILDER_USER_ID, channel: process.env.BUILDER_CHANNEL_ID, name: "DaBuilder" },
   { id: process.env.COLLECTOR_USER_ID, channel: process.env.COLLECTOR_CHANNEL_ID, name: "DaCollector" },
-  { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
+  // { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
 ];
 
 const EXEMPT_POOL = [
@@ -15,7 +15,67 @@ const EXEMPT_POOL = [
   { id: "mech-e", channel: process.env.MECH_CHANNEL_ID, name: "MechE" },
   { id: "majestic-ruby-71", channel: process.env.MAJESTIC_CHANNEL_ID, name: "MajesticRuby71" },
   { id: process.env.GAMER_USER_ID, channel: process.env.GAMER_CHANNEL_ID, name: "DaGamer" },
+  { id: "april-love", channel: "1444766178487832627", name: "AprilLove" },
+  { id: "prof-cousin", channel: "1447724785164484720", name: "ProfCousin" },
 ];
+
+const GIFT_GIFS = [
+  // "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
+  // "https://tenor.com/view/hi-gif-20946139",
+  // "https://tenor.com/view/obviously-professor-snape-snape-harry-potter-gif-3180081195623619049",
+  // "https://tenor.com/view/hermione-granger-hermione-harry-potter-emma-watson-gif-26272047",
+  // "https://tenor.com/view/harry-potter-hermione-granger-gif-27396491",
+  "https://tenor.com/view/magicverse-gringotts-coinal-gif-17237223530357486550",
+];
+
+/**
+ * Set a flag to skip the next scheduled gift rotation.
+ * @param {import('discord.js').Client} client
+ */
+export async function setSkipNextRotation(client) {
+  const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
+  const rotChan = await client.channels.fetch(rotationChannelId).catch(() => null);
+  if (!isTextish(rotChan)) throw new Error(`Rotation channel ${rotationChannelId} not found.`);
+
+  // Get the current state and add skip flag to it
+  const lastMsg = await fetchLastMessage(rotChan);
+  const lastState = parseStateFromMessage(lastMsg?.content);
+
+  const newState = {
+    remaining: lastState?.remaining || [],
+    pool: lastState?.pool || [],
+    skip: true,
+    ts: Date.now()
+  };
+
+  await rotChan.send("⏭️ **SKIP FLAG SET** - The next scheduled rotation will be skipped. STATE: " + JSON.stringify(newState));
+}
+
+/**
+ * Check if the next rotation should be skipped.
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<boolean>}
+ */
+export async function shouldSkipRotation(client) {
+  const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
+  const rotChan = await client.channels.fetch(rotationChannelId).catch(() => null);
+  if (!isTextish(rotChan)) return false;
+
+  const lastMsg = await fetchLastMessage(rotChan);
+  if (!lastMsg?.content) return false;
+
+  const lines = lastMsg.content.split(/\r?\n/);
+  const stateLine = lines.find(l => l.trim().startsWith("STATE:"));
+  if (!stateLine) return false;
+
+  const json = stateLine.replace(/^STATE:\s*/i, "").trim();
+  try {
+    const obj = JSON.parse(json);
+    return obj?.skip === true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Post a new gift rotation pick.
@@ -108,8 +168,15 @@ export async function runGiftRotation(client, opts = {}) {
       `**Selected:** ${chosenRef}`,
       `Everyone send your gifts to ${chosenRef}!`,
       "",
+      `**Instructions:**`,
+      `1. If giftee is not gold locked, gift any duplicates giftee is missing`,
+      `2. If gifter has no duplicates giftee is missing and giftee is still not gold locked, gift any 1, 2, or 3 star duplicate with highest to lowest star priority to contribute to giftee's vault growth`,
+      `3. When giftee is gold locked, gift any 1, 2, or 3 star duplicate with highest to lowest star priority to contribute to giftee's vault growth`,
+      `4. Always gift 5 stickers`,
+      "",
       `**Gifters this round:** ${giftersLine}`, // includes exempt + pool (minus chosen)
-      "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
+      "",
+      randomFromArray(GIFT_GIFS),
     ];
     await chosenChan.send(announceLines.join("\n"));
   } else {

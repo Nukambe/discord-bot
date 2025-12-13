@@ -7,7 +7,7 @@ import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getE
 import { postEvent } from "./postEvent.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import path from "node:path";
-import { runGiftRotation } from "./giftRotation.js";
+import { runGiftRotation, shouldSkipRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
 import { fortuneFlipChannelListener } from "./postInstructions.js";
 import "dotenv/config";
@@ -185,6 +185,37 @@ client.once(Events.ClientReady, async () => {
             console.log("🎁 Running gift rotation (Sun/Wed 7:30 PM EST)...");
 
             try {
+                // Check if rotation should be skipped
+                const skip = await shouldSkipRotation(client);
+                if (skip) {
+                    console.log("⏭️ Gift rotation skipped by admin command. Will resume next time.");
+
+                    // Clear the skip flag without changing the rotation state
+                    const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
+                    const rotChan = await client.channels.fetch(rotationChannelId).catch(() => null);
+                    if (rotChan) {
+                        // Read current state and repost without skip flag
+                        const msgs = await rotChan.messages.fetch({ limit: 1 }).catch(() => null);
+                        if (msgs && msgs.size > 0) {
+                            const lastMsg = [...msgs.values()][0];
+                            const lines = lastMsg.content.split(/\r?\n/);
+                            const stateLine = lines.find(l => l.trim().startsWith("STATE:"));
+                            if (stateLine) {
+                                const json = stateLine.replace(/^STATE:\s*/i, "").trim();
+                                try {
+                                    const state = JSON.parse(json);
+                                    delete state.skip; // Remove skip flag
+                                    state.ts = Date.now(); // Update timestamp
+                                    await rotChan.send("✅ Skip consumed. Next rotation will run normally. STATE: " + JSON.stringify(state));
+                                } catch (e) {
+                                    console.error("Failed to parse state while clearing skip:", e);
+                                }
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 await runGiftRotation(client);
                 console.log("✅ Gift rotation job completed.");
             } catch (err) {
