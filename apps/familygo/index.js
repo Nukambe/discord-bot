@@ -213,11 +213,10 @@ client.once(Events.ClientReady, async () => {
                             }
                         }
                     }
-                    return;
+                } else {
+                    await runGiftRotation(client);
+                    console.log("✅ Gift rotation job completed.");
                 }
-
-                await runGiftRotation(client);
-                console.log("✅ Gift rotation job completed.");
             } catch (err) {
                 console.error("💥 Gift rotation job failed:", err);
             }

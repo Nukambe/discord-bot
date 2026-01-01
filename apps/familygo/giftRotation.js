@@ -17,6 +17,7 @@ const EXEMPT_POOL = [
   { id: process.env.GAMER_USER_ID, channel: process.env.GAMER_CHANNEL_ID, name: "DaGamer" },
   { id: "april-love", channel: "1444766178487832627", name: "AprilLove" },
   { id: "prof-cousin", channel: "1447724785164484720", name: "ProfCousin" },
+  { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
 ];
 
 const GIFT_GIFS = [
@@ -62,19 +63,9 @@ export async function shouldSkipRotation(client) {
   if (!isTextish(rotChan)) return false;
 
   const lastMsg = await fetchLastMessage(rotChan);
-  if (!lastMsg?.content) return false;
+  const lastState = parseStateFromMessage(lastMsg?.content);
 
-  const lines = lastMsg.content.split(/\r?\n/);
-  const stateLine = lines.find(l => l.trim().startsWith("STATE:"));
-  if (!stateLine) return false;
-
-  const json = stateLine.replace(/^STATE:\s*/i, "").trim();
-  try {
-    const obj = JSON.parse(json);
-    return obj?.skip === true;
-  } catch {
-    return false;
-  }
+  return lastState?.skip === true;
 }
 
 /**
