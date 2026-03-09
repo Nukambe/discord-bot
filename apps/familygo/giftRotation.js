@@ -5,27 +5,27 @@ import "dotenv/config";
 const POOL = [
   { id: process.env.ROLLER_USER_ID, channel: process.env.ROLLER_CHANNEL_ID, name: "DaRoller" },
   { id: process.env.WRECKER_USER_ID, channel: process.env.WRECKER_CHANNEL_ID, name: "DaWrecker" },
-  { id: process.env.BUILDER_USER_ID, channel: process.env.BUILDER_CHANNEL_ID, name: "DaBuilder" },
+  // { id: process.env.BUILDER_USER_ID, channel: process.env.BUILDER_CHANNEL_ID, name: "DaBuilder" },
   { id: process.env.COLLECTOR_USER_ID, channel: process.env.COLLECTOR_CHANNEL_ID, name: "DaCollector" },
   // { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
 ];
 
 const EXEMPT_POOL = [
-  { id: "oly-lifts", channel: process.env.OLY_CHANNEL_ID, name: "OlyLifts" },
-  { id: "mech-e", channel: process.env.MECH_CHANNEL_ID, name: "MechE" },
+  // { id: "oly-lifts", channel: process.env.OLY_CHANNEL_ID, name: "OlyLifts" },
+  // { id: "mech-e", channel: process.env.MECH_CHANNEL_ID, name: "MechE" },
   { id: "majestic-ruby-71", channel: process.env.MAJESTIC_CHANNEL_ID, name: "MajesticRuby71" },
-  { id: process.env.GAMER_USER_ID, channel: process.env.GAMER_CHANNEL_ID, name: "DaGamer" },
+  // { id: process.env.GAMER_USER_ID, channel: process.env.GAMER_CHANNEL_ID, name: "DaGamer" },
   { id: "april-love", channel: "1444766178487832627", name: "AprilLove" },
   { id: "prof-cousin", channel: "1447724785164484720", name: "ProfCousin" },
   { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
 ];
 
 const GIFT_GIFS = [
-  // "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
-  // "https://tenor.com/view/hi-gif-20946139",
-  // "https://tenor.com/view/obviously-professor-snape-snape-harry-potter-gif-3180081195623619049",
-  // "https://tenor.com/view/hermione-granger-hermione-harry-potter-emma-watson-gif-26272047",
-  // "https://tenor.com/view/harry-potter-hermione-granger-gif-27396491",
+  "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
+  "https://tenor.com/view/hi-gif-20946139",
+  "https://tenor.com/view/obviously-professor-snape-snape-harry-potter-gif-3180081195623619049",
+  "https://tenor.com/view/hermione-granger-hermione-harry-potter-emma-watson-gif-26272047",
+  "https://tenor.com/view/harry-potter-hermione-granger-gif-27396491",
   "https://tenor.com/view/magicverse-gringotts-coinal-gif-17237223530357486550",
 ];
 
