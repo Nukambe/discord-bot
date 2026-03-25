@@ -7,6 +7,7 @@ export default {
     .setDescription("Displays the Rank 1 image"),
   async execute(interaction) {
     const file = new AttachmentBuilder(path.resolve("apps/nukoko/media/rank1.png"));
-    await interaction.reply({ files: [file] });
+    const msg = await interaction.reply({ files: [file], fetchReply: true });
+    await msg.react("bron_him:1472813733997969512").catch(() => {});
   },
 };
