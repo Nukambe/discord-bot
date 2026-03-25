@@ -1,6 +1,6 @@
 import { SlashCommandBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 
-const PLACEHOLDER_GIF = "https://media.giphy.com/media/l0MYt5jPR6QX5pnqM/giphy.gif";
+const PLACEHOLDER_GIF = "https://klipy.com/gifs/super-saiyan-god-goku-and-super-saiyan-god-vegeta-divine-warriors-with-infinite-power-20";
 
 export default {
   data: new SlashCommandBuilder()
@@ -57,7 +57,8 @@ export default {
         const msg = await interaction.fetchReply().catch(() => null);
         if (msg) {
           await msg.edit({ components: [] }).catch(() => {});
-          await msg.react("bron_crying:1472813733016375443").catch(() => {});
+          const noReply = await interaction.channel.send(`${target} left **${requester.displayName}** on read. 💀`).catch(() => null);
+          if (noReply) await noReply.react("bron_crying:1472813733016375443").catch(() => {});
         }
       }
     });
