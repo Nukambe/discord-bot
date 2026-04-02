@@ -186,6 +186,13 @@ client.once(Events.ClientReady, async () => {
         async () => {
             console.log("🎁 Running gift rotation (Sun/Wed 7:30 PM EST)...");
 
+            // Pause window: April 6–24, 2026
+            const nowEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+            if (nowEst >= '2026-04-06' && nowEst <= '2026-04-24') {
+                console.log("⏸️ Gift rotation paused (April 6–24 pause window). Skipping.");
+                return;
+            }
+
             try {
                 // Check if rotation should be skipped
                 const skip = await shouldSkipRotation(client);
