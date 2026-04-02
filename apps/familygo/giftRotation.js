@@ -1,5 +1,5 @@
 import { ChannelType } from "discord.js";
-import { getTodayPrettyDate } from "../../util/dateUtils.js";
+import { getTodayPrettyDate, getTomorrowPrettyDate } from "../../util/dateUtils.js";
 import "dotenv/config";
 
 const POOL = [
@@ -151,7 +151,7 @@ export async function runGiftRotation(client, opts = {}) {
       return;
     }
 
-    const tomorrowDate = getTodayPrettyDate(); // UTC today = EST tomorrow
+    const tomorrowDate = getTomorrowPrettyDate(); // UTC today = EST tomorrow
     const announceLines = [
       `🎁 **Gift Rotation**`,
       `📅 This rotation is for **${tomorrowDate}**.`,

@@ -173,7 +173,9 @@ client.once(Events.ClientReady, async () => {
         '30 19 * * *',
         async () => {
             console.log('Running daily script (7:30 PM EST)...');
-            const dateSlug = formatDateSlug(new Date());
+            const tomorrow = new Date();
+            tomorrow.setDate(tomorrow.getDate() + 1);
+            const dateSlug = formatDateSlug(tomorrow);
             await postEventToDiscord(client, dateSlug);
         },
         { timezone: 'America/New_York' }
