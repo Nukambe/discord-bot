@@ -29,6 +29,9 @@ const EMOJI_MAP = [
   { re: /\btrade\s*fest\b/i, emoji: "<:TradeFest_PillIcon:1441936194379190422>" },
   { re: /\bprize\s*drop\b/i, emoji: "<:image0:1441934101819949108>" },
   { re: /\bjackpot\s*stash\b.*(race|racer|cup|currency|racers)/i, emoji: "<:RaceCup_Currency_Icon:1441936191870992454>" },
+  { re: /\badventure\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
+  { re: /\bpartner\s*event\b/i, emoji: "<:partners:1489742544509206548>" },
+  { re: /\bdig\s*minigame\b/i, emoji: "<:Dig_Tool:1437570228421791855>" },
 ];
 
 export function formatMogoDiscordMessage(payload, source) {
