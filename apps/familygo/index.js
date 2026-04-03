@@ -41,7 +41,7 @@ export const postEventToDiscord = async (client, dateSlug) => {
     const url = getEventUrlFromHtml(eventsHtml, dateSlug);
     if (!url) {
         console.warn(`⚠️ No event URL found for date slug: ${dateSlug}`);
-        return;
+        return false;
     }
     console.log(`🔗 Found event URL: ${url}`);
 
@@ -176,7 +176,20 @@ client.once(Events.ClientReady, async () => {
             const tomorrow = new Date();
             tomorrow.setDate(tomorrow.getDate() + 1);
             const dateSlug = formatDateSlug(tomorrow);
-            await postEventToDiscord(client, dateSlug);
+            const success = await postEventToDiscord(client, dateSlug);
+            if (success === false) {
+                console.log('No event URL found, will retry in 1 hour...');
+                const retryInterval = setInterval(async () => {
+                    console.log(`Retrying postEventToDiscord for ${dateSlug}...`);
+                    const retrySuccess = await postEventToDiscord(client, dateSlug);
+                    if (retrySuccess !== false) {
+                        console.log('Retry succeeded, stopping retries.');
+                        clearInterval(retryInterval);
+                    } else {
+                        console.log('Still no event URL, will retry again in 1 hour...');
+                    }
+                }, 60 * 60 * 1000);
+            }
         },
         { timezone: 'America/New_York' }
     );
