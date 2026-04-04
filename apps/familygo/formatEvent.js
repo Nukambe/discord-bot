@@ -32,6 +32,7 @@ const EMOJI_MAP = [
   { re: /\badventure\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
   { re: /\bpartner\s*event\b/i, emoji: "<:partners:1489742544509206548>" },
   { re: /\bdig\s*minigame\b/i, emoji: "<:Dig_Tool:1437570228421791855>" },
+  { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks:1489776289123536917>" },
 ];
 
 export function formatMogoDiscordMessage(payload, source) {
