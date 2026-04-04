@@ -1,13 +1,12 @@
-import { SlashCommandBuilder, AttachmentBuilder } from "discord.js";
-import path from "node:path";
+import { SlashCommandBuilder } from "discord.js";
+import { replyWithImage } from "../_replyWithImage.js";
 
 export default {
   data: new SlashCommandBuilder()
     .setName("rank1")
     .setDescription("Displays the Rank 1 image"),
   async execute(interaction) {
-    const file = new AttachmentBuilder(path.resolve("apps/nukoko/media/rank1.png"));
-    const msg = await interaction.reply({ files: [file], fetchReply: true });
+    const msg = await replyWithImage(interaction, "apps/nukoko/media/rank1.png");
     await msg.react("bron_him:1472813733997969512").catch(() => {});
   },
 };
