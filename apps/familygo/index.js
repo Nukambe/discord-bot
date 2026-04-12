@@ -165,31 +165,56 @@ const listenForCommands = async (client) => {
     fortuneFlipChannelListener(client);
 };
 
+/**
+ * Check if today's event post already exists in the Discord channel.
+ * Uses the message content (`source: <url>`) which always contains the dateSlug.
+ */
+const isAlreadyPosted = async (client, dateSlug) => {
+    const channelId = process.env.CHANNEL_ID;
+    if (!channelId) return false;
+    try {
+        const channel = await client.channels.fetch(channelId).catch(() => null);
+        if (!channel) return false;
+        const messages = await channel.messages.fetch({ limit: 20 }).catch(() => null);
+        if (!messages) return false;
+        return messages.some(msg => msg.content?.includes(dateSlug));
+    } catch {
+        return false;
+    }
+};
+
 client.once(Events.ClientReady, async () => {
     console.log(`✅ Discord ready as ${client.user.tag}`);
 
-    // Run daily job at 7:30 PM Eastern Time
+    // Run every 30 minutes. Posts tomorrow's events starting at 7:30 PM ET,
+    // retrying every 30 min until posted or the window closes at 3:30 PM ET
+    // the next day (~20 hours). Uses Discord itself to detect if already posted,
+    // so server restarts don't interrupt the retry loop.
     cron.schedule(
-        '30 19 * * *',
+        '*/30 * * * *',
         async () => {
-            console.log('Running daily script (7:30 PM EST)...');
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const dateSlug = formatDateSlug(tomorrow);
-            const success = await postEventToDiscord(client, dateSlug);
-            if (success === false) {
-                console.log('No event URL found, will retry in 1 hour...');
-                const retryInterval = setInterval(async () => {
-                    console.log(`Retrying postEventToDiscord for ${dateSlug}...`);
-                    const retrySuccess = await postEventToDiscord(client, dateSlug);
-                    if (retrySuccess !== false) {
-                        console.log('Retry succeeded, stopping retries.');
-                        clearInterval(retryInterval);
-                    } else {
-                        console.log('Still no event URL, will retry again in 1 hour...');
-                    }
-                }, 60 * 60 * 1000);
-            }
+            // Get current time components in Eastern
+            const now = new Date();
+            const estDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
+            const estTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false });
+            const [estYear, estMonth, estDay] = estDateStr.split('-').map(Number);
+            const [estHour, estMinute] = estTimeStr.split(':').map(Number);
+
+            // Window: 7:30 PM (19:30) through 3:30 PM (15:30) the next day
+            const afterWindowStart = estHour > 19 || (estHour === 19 && estMinute >= 30);
+            const beforeWindowEnd = estHour < 15 || (estHour === 15 && estMinute <= 30);
+            if (!afterWindowStart && !beforeWindowEnd) return;
+
+            // Determine target date: tomorrow if between 7:30 PM–midnight, today if midnight–3:30 PM
+            const targetDate = new Date(estYear, estMonth - 1, estDay);
+            if (afterWindowStart) targetDate.setDate(targetDate.getDate() + 1);
+            const dateSlug = formatDateSlug(targetDate);
+
+            // Skip if already posted (Discord is the persistence layer)
+            if (await isAlreadyPosted(client, dateSlug)) return;
+
+            console.log(`📅 Attempting to post event for ${dateSlug}...`);
+            await postEventToDiscord(client, dateSlug);
         },
         { timezone: 'America/New_York' }
     );

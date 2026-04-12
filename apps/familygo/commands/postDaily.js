@@ -11,9 +11,8 @@ export default {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const tomorrow = new Date();
-            tomorrow.setDate(tomorrow.getDate() + 1);
-            const dateSlug = formatDateSlug(tomorrow);
+            const today = new Date();
+            const dateSlug = formatDateSlug(today);
             await postEventToDiscord(interaction.client, dateSlug);
             await interaction.editReply("✅ Post daily events executed successfully.");
         } catch (err) {
