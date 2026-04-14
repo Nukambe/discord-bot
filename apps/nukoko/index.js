@@ -1,6 +1,7 @@
 import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import { deployCommands } from "./deploy-commands.js";
+import { startStreamNotifier } from "./streamNotifier.js";
 import path from "node:path";
 import "dotenv/config";
 
@@ -86,6 +87,7 @@ const listenForCommands = async (client) => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Discord ready as ${client.user.tag}`);
   await listenForCommands(client);
+  startStreamNotifier(client);
 });
 
 const shutdown = async (sig) => {
