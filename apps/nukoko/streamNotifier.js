@@ -104,8 +104,8 @@ export async function startStreamNotifier(discordClient) {
   async function refreshToken() {
     const result = await getAppAccessToken(clientId, clientSecret);
     accessToken = result.token;
-    // Refresh a bit before expiry
-    setTimeout(refreshToken, (result.expiresIn - 300) * 1000);
+    // Refresh daily (token lasts ~57 days but setTimeout has a 32-bit ms limit)
+    setTimeout(refreshToken, 24 * 60 * 60 * 1000);
   }
 
   await refreshToken();
