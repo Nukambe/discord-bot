@@ -87,7 +87,7 @@ const listenForCommands = async (client) => {
 client.once(Events.ClientReady, async () => {
   console.log(`✅ Discord ready as ${client.user.tag}`);
   await listenForCommands(client);
-  startStreamNotifier(client);
+  startStreamNotifier(client).catch(console.error);
 });
 
 const shutdown = async (sig) => {
