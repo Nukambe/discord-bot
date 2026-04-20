@@ -134,6 +134,16 @@ function stringifyEventBlock($block, $) {
     $block.find('img[alt]').first().attr('alt') ||
     'Event';
 
+  // For Free Parking events, tag name with [cash] or [dice] based on commodity img src
+  if (/free\s*parking/i.test(name)) {
+    const commoditySrc = $block.find('img[style*="max-height"]').first().attr('src') || '';
+    if (/FreeParking_Money/i.test(commoditySrc)) {
+      name += ' [cash]';
+    } else if (/LuckyRoll/i.test(commoditySrc)) {
+      name += ' [dice]';
+    }
+  }
+
   // Start/end time(s) – use data-date (UTC timestamp) instead of visible text
   const localDates = $block
     .find('.local-date')
