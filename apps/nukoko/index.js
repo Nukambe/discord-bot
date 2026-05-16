@@ -2,6 +2,7 @@ import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import { loadCommands } from "../../util/loadCommands.js";
 import { deployCommands } from "./deploy-commands.js";
 import { startStreamNotifier } from "./streamNotifier.js";
+import { startWeekendCodeJob } from "./jobs/weekendCode.js";
 import path from "node:path";
 import "dotenv/config";
 
@@ -88,6 +89,7 @@ client.once(Events.ClientReady, async () => {
   console.log(`✅ Discord ready as ${client.user.tag}`);
   await listenForCommands(client);
   startStreamNotifier(client).catch(console.error);
+  startWeekendCodeJob(client);
 });
 
 const shutdown = async (sig) => {

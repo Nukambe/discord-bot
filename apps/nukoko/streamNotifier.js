@@ -1,6 +1,6 @@
 import { request } from 'undici';
 
-const CHANNELS = ['nukambe', 'bodhifide', 'valioa'];
+const CHANNELS = ['nukambe', 'bodhifide', 'valioa', 'woosah2sickwitit'];
 const NOTIFY_CHANNEL_ID = '1468093888643203243';
 const STATE_CHANNEL_ID = '1493671213736919280';
 const POLL_INTERVAL_MS = 60_000;
