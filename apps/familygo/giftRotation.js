@@ -27,7 +27,8 @@ const GIFT_GIFS = [
   // "https://tenor.com/view/hermione-granger-hermione-harry-potter-emma-watson-gif-26272047",
   // "https://tenor.com/view/harry-potter-hermione-granger-gif-27396491",
   // "https://tenor.com/view/magicverse-gringotts-coinal-gif-17237223530357486550",
-  "https://giphy.com/gifs/poor-souls-ursula-gm5zifRTBmiKk"
+  // "https://giphy.com/gifs/poor-souls-ursula-gm5zifRTBmiKk"
+  "https://giphy.com/gifs/the-simpsons-money-6WmyDIKwGvKFO"
 ];
 
 /**
@@ -233,7 +234,7 @@ async function formatUserRef(entry, guild) {
     try {
       const fetched = await guild.members.fetch(id);
       if (fetched) return `<@${id}>`;
-    } catch {}
+    } catch { }
   }
 
   const pretty = name ? `**${name}**` : (isSnowflake(id) ? `**User ${id}**` : `**${id}**`);
