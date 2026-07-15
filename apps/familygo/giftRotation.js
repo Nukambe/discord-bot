@@ -1,5 +1,6 @@
 import { ChannelType } from "discord.js";
 import { getTodayPrettyDate, getTomorrowPrettyDate } from "../../util/dateUtils.js";
+import { getDb, defaultDb } from "./db.js";
 import "dotenv/config";
 
 const POOL = [
@@ -18,17 +19,6 @@ const EXEMPT_POOL = [
   { id: "april-love", channel: "1444766178487832627", name: "AprilLove" },
   { id: "prof-cousin", channel: "1447724785164484720", name: "ProfCousin" },
   { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
-];
-
-const GIFT_GIFS = [
-  // "https://tenor.com/view/squidward-spare-change-spare-some-change-begging-poor-gif-18999842",
-  // "https://tenor.com/view/hi-gif-20946139",
-  // "https://tenor.com/view/obviously-professor-snape-snape-harry-potter-gif-3180081195623619049",
-  // "https://tenor.com/view/hermione-granger-hermione-harry-potter-emma-watson-gif-26272047",
-  // "https://tenor.com/view/harry-potter-hermione-granger-gif-27396491",
-  // "https://tenor.com/view/magicverse-gringotts-coinal-gif-17237223530357486550",
-  // "https://giphy.com/gifs/poor-souls-ursula-gm5zifRTBmiKk"
-  "https://giphy.com/gifs/the-simpsons-money-6WmyDIKwGvKFO"
 ];
 
 /**
@@ -82,6 +72,9 @@ export async function runGiftRotation(client, opts = {}) {
   const { debug = false } = opts;
   const title = "🎁 Gift Rotator";
   const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
+
+  const db = (await getDb(client).catch(() => null)) ?? defaultDb();
+  const gifs = db.giftRotation?.gifs?.length ? db.giftRotation.gifs : defaultDb().giftRotation.gifs;
 
   // 1) Validate inputs
   const validPool = dedupePool(POOL);               // selectable
@@ -169,7 +162,7 @@ export async function runGiftRotation(client, opts = {}) {
       "",
       `**Gifters this round:** ${giftersLine}`, // includes exempt + pool (minus chosen)
       "",
-      randomFromArray(GIFT_GIFS),
+      randomFromArray(gifs),
     ];
     await chosenChan.send(announceLines.join("\n"));
   } else {

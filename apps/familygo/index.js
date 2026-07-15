@@ -10,6 +10,8 @@ import path from "node:path";
 import { runGiftRotation, shouldSkipRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
 import { fortuneFlipChannelListener } from "./postInstructions.js";
+import { initDb, defaultDb, onDbChange } from "./db.js";
+import { handleConfigModalSubmit } from "./commands/config.js";
 import "dotenv/config";
 
 deployCommands();
@@ -98,6 +100,27 @@ const listenForCommands = async (client) => {
     console.log("🧭 Command listener initialized");
 
     client.on(Events.InteractionCreate, async (interaction) => {
+        if (interaction.isModalSubmit()) {
+            if (!interaction.customId.startsWith("config-modal:")) return;
+            try {
+                await handleConfigModalSubmit(interaction);
+            } catch (err) {
+                console.error("💥 Error handling config modal submit:", err);
+                if (interaction.deferred || interaction.replied) {
+                    await interaction.followUp({
+                        content: "⚠️ Something went wrong updating the config.",
+                        ephemeral: true,
+                    }).catch(() => { });
+                } else {
+                    await interaction.reply({
+                        content: "⚠️ Something went wrong updating the config.",
+                        ephemeral: true,
+                    }).catch(() => { });
+                }
+            }
+            return;
+        }
+
         if (!interaction.isChatInputCommand()) return;
 
         const name = interaction.commandName;
@@ -183,15 +206,38 @@ const isAlreadyPosted = async (client, dateSlug) => {
     }
 };
 
-client.once(Events.ClientReady, async () => {
-    console.log(`✅ Discord ready as ${client.user.tag}`);
+/**
+ * Parse a "HH:mm" (24h) string into [hour, minute], falling back if missing/invalid.
+ */
+const parseHHmm = (str, fallbackHour, fallbackMinute) => {
+    const match = typeof str === "string" && str.match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+        const hour = Number(match[1]);
+        const minute = Number(match[2]);
+        if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) return [hour, minute];
+    }
+    return [fallbackHour, fallbackMinute];
+};
 
-    // Run every 30 minutes. Posts tomorrow's events starting at 7:30 PM ET,
-    // retrying every 30 min until posted or the window closes at 3:30 PM ET
-    // the next day (~20 hours). Uses Discord itself to detect if already posted,
-    // so server restarts don't interrupt the retry loop.
-    cron.schedule(
-        '*/30 * * * *',
+let dailyPostTask = null;
+let giftRotationTask = null;
+
+/**
+ * (Re)start the daily-post cron using the given db's schedule.
+ * Posts tomorrow's events starting at the configured window start time,
+ * retrying every `retryIntervalMinutes` until posted or the window closes.
+ * Uses Discord itself to detect if already posted, so server restarts
+ * don't interrupt the retry loop.
+ */
+const startDailyPostCron = (client, db) => {
+    if (dailyPostTask) dailyPostTask.stop();
+
+    const retryIntervalMinutes = db.dailyPost?.retryIntervalMinutes || 30;
+    const [startHour, startMinute] = parseHHmm(db.dailyPost?.windowStartTime, 19, 30);
+    const [endHour, endMinute] = parseHHmm(db.dailyPost?.windowEndTime, 15, 30);
+
+    dailyPostTask = cron.schedule(
+        `*/${retryIntervalMinutes} * * * *`,
         async () => {
             // Get current time components in Eastern
             const now = new Date();
@@ -200,12 +246,12 @@ client.once(Events.ClientReady, async () => {
             const [estYear, estMonth, estDay] = estDateStr.split('-').map(Number);
             const [estHour, estMinute] = estTimeStr.split(':').map(Number);
 
-            // Window: 7:30 PM (19:30) through 3:30 PM (15:30) the next day
-            const afterWindowStart = estHour > 19 || (estHour === 19 && estMinute >= 30);
-            const beforeWindowEnd = estHour < 15 || (estHour === 15 && estMinute <= 30);
+            // Window: windowStartTime through windowEndTime the next day
+            const afterWindowStart = estHour > startHour || (estHour === startHour && estMinute >= startMinute);
+            const beforeWindowEnd = estHour < endHour || (estHour === endHour && estMinute <= endMinute);
             if (!afterWindowStart && !beforeWindowEnd) return;
 
-            // Determine target date: tomorrow if between 7:30 PM–midnight, today if midnight–3:30 PM
+            // Determine target date: tomorrow if after window start, today if before window end
             const targetDate = new Date(estYear, estMonth - 1, estDay);
             if (afterWindowStart) targetDate.setDate(targetDate.getDate() + 1);
             const dateSlug = formatDateSlug(targetDate);
@@ -218,17 +264,28 @@ client.once(Events.ClientReady, async () => {
         },
         { timezone: 'America/New_York' }
     );
-    // Gift rotation: every Tuesday (2) and Saturday (6) at 7:30 PM Eastern
-    cron.schedule(
-        "30 19 * * 0,3", // minute hour day month dayOfWeek (0=Sun, 3=Wed)
-        async () => {
-            console.log("🎁 Running gift rotation (Sun/Wed 7:30 PM EST)...");
+};
 
-            // Pause window: April 6–21, 2026
-            const nowEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-            if (nowEst >= '2026-04-06' && nowEst <= '2026-04-21') {
-                console.log("⏸️ Gift rotation paused (April 6–21 pause window). Skipping.");
-                return;
+/** (Re)start the gift-rotation cron using the given db's schedule. */
+const startGiftRotationCron = (client, db) => {
+    if (giftRotationTask) giftRotationTask.stop();
+
+    const [rotationHour, rotationMinute] = parseHHmm(db.giftRotation?.time, 19, 30);
+    const rotationDays = (db.giftRotation?.days?.length ? db.giftRotation.days : [0, 3]).join(',');
+
+    giftRotationTask = cron.schedule(
+        `${rotationMinute} ${rotationHour} * * ${rotationDays}`, // minute hour day month dayOfWeek
+        async () => {
+            console.log(`🎁 Running gift rotation (day(s) ${rotationDays} @ ${String(rotationHour).padStart(2, '0')}:${String(rotationMinute).padStart(2, '0')} EST)...`);
+
+            // Pause window (configured via /config gift-rotation-pause)
+            const pause = db.giftRotation?.pause;
+            if (pause?.start && pause?.end) {
+                const nowEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+                if (nowEst >= pause.start && nowEst <= pause.end) {
+                    console.log(`⏸️ Gift rotation paused (${pause.start}–${pause.end} pause window). Skipping.`);
+                    return;
+                }
             }
 
             try {
@@ -270,6 +327,30 @@ client.once(Events.ClientReady, async () => {
         },
         { timezone: "America/New_York" }
     );
+};
+
+client.once(Events.ClientReady, async () => {
+    console.log(`✅ Discord ready as ${client.user.tag}`);
+
+    let db;
+    try {
+        db = await initDb(client);
+    } catch (err) {
+        console.error("💥 Failed to initialize database:", err);
+        db = defaultDb();
+    }
+
+    startDailyPostCron(client, db);
+    startGiftRotationCron(client, db);
+
+    // Whenever a command updates the db, tear down and rebuild both crons
+    // from the new schedule.
+    onDbChange((newDb) => {
+        console.log("🔄 Database updated — restarting crons with new schedule...");
+        startDailyPostCron(client, newDb);
+        startGiftRotationCron(client, newDb);
+    });
+
     await listenForCommands(client);
 });
 
