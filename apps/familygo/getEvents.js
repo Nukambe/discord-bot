@@ -32,9 +32,8 @@ export async function getMogoWikiEvents(opts = {}) {
 }
 
 /**
- * Find the Monopoly GO event URL for a given date by scanning <a.gh-card-link> elements.
- *
- * Assumes each event card on the index uses an anchor with class "gh-card-link".
+ * Find the Monopoly GO event URL for a given date by scanning anchors whose
+ * href starts with "/todays-events-{dateSlug}".
  * Builds and returns an absolute URL using the provided base.
  *
  * @param {string} html - The Monopoly GO Events page HTML.
@@ -57,7 +56,7 @@ export function getEventUrlFromHtml(html, dateSlug, opts = {}) {
     console.log("Event Prefix:", prefix);
   }
 
-  const anchors = $("a.gh-card-link");
+  const anchors = $(`a[href^="${prefix}"]`);
   for (const el of anchors) {
     const href = $(el).attr("href")?.trim();
 
