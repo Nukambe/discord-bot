@@ -15,17 +15,17 @@ export async function fetchWithPlaywright(url, opts = {}) {
   const browser = await chromium.launch({
     headless: true,
     executablePath: "/app/.chrome-for-testing/chrome-linux64/chrome",
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    // Site fronts requests with Cloudflare bot management, which flags the
+    // stock automation flag and (previously) a hardcoded UA header that didn't
+    // match the real binary's navigator.userAgent/Client-Hints.
+    args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
   });
 
-  const page = await browser.newPage();
-
-  // Pretend to be a real Chrome user
-  await page.setExtraHTTPHeaders({
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ' +
-      'AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  const context = await browser.newContext({
+    viewport: { width: 1366, height: 900 },
+    locale: 'en-US',
   });
+  const page = await context.newPage();
 
   try {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
