@@ -17,7 +17,9 @@ export async function getMogoWikiEvents(opts = {}) {
 
   console.log("fetching events for:", MOGO_WIKI_EVENTS_URL);
   try {
-    const html = await fetchWithPlaywright(MOGO_WIKI_EVENTS_URL);
+    const html = await fetchWithPlaywright(MOGO_WIKI_EVENTS_URL, {
+      waitForSelector: 'a[href^="/todays-events-"]',
+    });
     console.log("[getMogoWikiEvents] Page fetched successfully.");
 
     if (debug) {
@@ -74,6 +76,15 @@ export function getEventUrlFromHtml(html, dateSlug, opts = {}) {
       }
     }
   }
+
+  const anyDateAnchors = $('a[href^="/todays-events-"]');
+  const sampleHrefs = [...anyDateAnchors].slice(0, 5).map((el) => $(el).attr("href"));
+  console.warn(
+    `[getEventUrlFromHtml] No match for "${prefix}". html.length=${html.length}, ` +
+    `containsTodaysEvents=${html.includes("todays-events-")}, ` +
+    `anyDateAnchorCount=${anyDateAnchors.length}, sampleHrefs=${JSON.stringify(sampleHrefs)}, ` +
+    `pageTitle=${JSON.stringify($("title").text())}`
+  );
 
   return null;
 }
