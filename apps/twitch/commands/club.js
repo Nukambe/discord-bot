@@ -6,6 +6,6 @@ export default {
   cooldownMs: 3000,
   modOnly: false,
   async exec({ channel, args, rawArgs, tags, client, registry }) {
-    await client.say(channel, 'Rephrase');
+    await client.say(channel, 'Triangle');
   },
 };
