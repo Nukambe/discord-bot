@@ -243,8 +243,8 @@ function buildQuickWinsField(bullets) {
 function parseBullet(line /*, pageDateStr */) {
   const name = (line.match(/\*\*(.+?)\*\*/) || [, "Event"])[1].trim();
 
-  // Duration is always captured as hh:mm:ss or dd:hh:mm (we treat it as raw)
-  const durMatch = line.match(/Duration:\s*([0-9]{1,2}:[0-9]{2}:[0-9]{2})/i);
+  // Duration is captured as h:mm, hh:mm:ss, or dd:hh:mm (we treat it as raw)
+  const durMatch = line.match(/Duration:\s*([0-9]{1,3}(?::[0-9]{2}){1,2})/i);
   const durationHMS = durMatch?.[1] || null;
 
   const se = line.replace(/^•\s*/, "").split("  •  ")[0];

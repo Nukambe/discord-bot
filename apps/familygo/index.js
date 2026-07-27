@@ -5,7 +5,9 @@ import { formatMogoDiscordMessage } from "./formatEvent.js";
 import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
 import { postEvent } from "./postEvent.js";
-import { loadCommands } from "../../util/loadCommands.js";
+import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
+import { staticCommands } from "./commands/index.js";
+import { fileURLToPath } from "node:url";
 import path from "node:path";
 import { runGiftRotation, shouldSkipRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
@@ -28,11 +30,15 @@ const client = new Client({
 client.commands = new Collection();
 const cooldowns = new Collection();
 
-export const postEventToDiscord = async (client, dateSlug) => {
-    console.log(`🌀 Starting postEventToDiscord for date: ${dateSlug}`);
+export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
+    // debug routes the post to TEST_CHANNEL_ID instead of the live channel, and
+    // turns on the fetch-layer debug output (verbose logs + HTML dumps to disk).
+    const { debug = false } = opts;
+
+    console.log(`🌀 Starting postEventToDiscord for date: ${dateSlug}${debug ? " (debug → test channel)" : ""}`);
 
     // Step 1: Retrieve HTML
-    const eventsHtml = await getMogoWikiEvents();
+    const eventsHtml = await getMogoWikiEvents({ debug });
     if (!eventsHtml) {
         console.error("❌ Unable to retrieve HTML from Mogo Wiki");
         return;
@@ -40,7 +46,7 @@ export const postEventToDiscord = async (client, dateSlug) => {
     console.log("✅ Retrieved main events HTML");
 
     // Step 2: Extract URL for event page
-    const url = getEventUrlFromHtml(eventsHtml, dateSlug);
+    const url = getEventUrlFromHtml(eventsHtml, dateSlug, { debug });
     if (!url) {
         console.warn(`⚠️ No event URL found for date slug: ${dateSlug}`);
         return false;
@@ -48,7 +54,7 @@ export const postEventToDiscord = async (client, dateSlug) => {
     console.log(`🔗 Found event URL: ${url}`);
 
     // Step 3: Retrieve full event page
-    const eventHtml = await getMogoEventPage(url);
+    const eventHtml = await getMogoEventPage(url, { debug });
     if (!eventHtml) {
         console.error(`❌ Unable to fetch event page for URL: ${url}`);
         return;
@@ -75,6 +81,7 @@ export const postEventToDiscord = async (client, dateSlug) => {
             client,
             content: formatted.content,
             embeds: formatted.embeds,
+            debug,
         });
         console.log("✅ Successfully posted event to Discord");
     } catch (err) {
@@ -94,8 +101,9 @@ export const postEventToDiscord = async (client, dateSlug) => {
  *  - defaultMemberPermissions?: PermissionFlagsBits | null [optional, used at deploy time]
  */
 const listenForCommands = async (client) => {
-    const commandsPath = path.resolve("apps/familygo/commands");
-    const { commands } = await loadCommands(commandsPath);
+    const { commands } = process.pkg
+        ? loadCommandsFromModules(staticCommands)
+        : await loadCommands(path.join(path.dirname(fileURLToPath(import.meta.url)), "commands"));
     for (const [name, cmd] of commands) client.commands.set(name, cmd);
     console.log("🧭 Command listener initialized");
 

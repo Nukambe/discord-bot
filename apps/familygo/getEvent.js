@@ -14,34 +14,33 @@ export function parseMonopolyEventPage(html, opts = {}) {
   const $ = cheerio.load(html);
 
   const title =
-    $('h1.gh-article-title').first().text().trim() ||
+    $('h1').first().text().trim() ||
     $('title').first().text().trim() ||
     "Monopoly GO — Today's Events";
 
-  // --- Collect article images (exclude the ad with caption) ---
-  // We take *all* uncaptioned figures inside article body, in order of appearance.
-  const contentImages = $('section.gh-content figure.kg-image-card')
+  // --- Collect article images ---
+  // Content images live in <figure class="pw-image"> inside the article body.
+  const contentImages = $('article.pw-content figure.pw-image img')
     .toArray()
-    .filter(el => !$(el).hasClass('kg-card-hascaption'))
-    .map(el => $(el).find('img').attr('src'))
+    .map(el => $(el).attr('src'))
     .filter(Boolean)
     .map(src => resolveUrl(src, sourceUrl));
 
-  // Fallbacks if none matched
+  // Fallbacks if none matched (e.g. the generic daily header banner / og:image)
   if (contentImages.length === 0) {
     const og = $('meta[property="og:image"]').attr('content');
-    const header = $('.gh-article-image img').attr('src');
+    const header = $('article img').first().attr('src');
     if (og || header) contentImages.push(resolveUrl(og || header, sourceUrl));
   }
 
   // Primary featured image is the first (or last—choose what looks better).
-  // Using the first tends to show MLS banner before TN poster if both are present.
   const featuredImage = contentImages[0] || null;
   const extraImages = contentImages.slice(1); // the rest
 
-  // --- Build structured sections: <h4> followed by consecutive .event-block siblings ---
+  // --- Build structured sections: <h2> (direct child of article.pw-content) ---
+  // followed by sibling wrapper blocks containing .event-block / .quick-win items.
   const sections = [];
-  $('section.gh-content h4').each((_, h) => {
+  $('article.pw-content > h2').each((_, h) => {
     const heading = $(h).text().replace(/\s+/g, ' ').trim();
     if (!heading) return;
 
@@ -49,11 +48,14 @@ export function parseMonopolyEventPage(html, opts = {}) {
     let $n = $(h).next();
 
     // Pull in contiguous siblings until the next header
-    while ($n.length && !$n.is('h1,h2,h3,h4')) {
-      if ($n.is('.event-block')) {
-        const line = stringifyEventBlock($n, $);
+    while ($n.length && !$n.is('h1,h2,h3')) {
+      $n.find('.event-block, .quick-win').each((__, block) => {
+        const $block = $(block);
+        const line = $block.hasClass('event-block')
+          ? stringifyEventBlock($block, $)
+          : stringifyQuickWin($block, $);
         if (line) items.push(line);
-      }
+      });
       $n = $n.next();
     }
 
@@ -62,7 +64,7 @@ export function parseMonopolyEventPage(html, opts = {}) {
 
   // Fallback: minimal summary if no sections detected
   if (sections.length === 0) {
-    const firstPara = $('section.gh-content p').first().text().trim();
+    const firstPara = $('article.pw-content > p').first().text().trim();
     if (firstPara) sections.push({ heading: 'Summary', items: [firstPara] });
   }
 
@@ -98,7 +100,7 @@ export function parseMonopolyEventPage(html, opts = {}) {
 
   // Final fallback for unexpected markup
   if (mainEmbed.fields.length === 0) {
-    const fallback = $('section.gh-content p')
+    const fallback = $('article.pw-content > p')
       .slice(0, 2)
       .map((__, p) => $(p).text().replace(/\s+/g, ' ').trim())
       .get()
@@ -121,22 +123,21 @@ export function parseMonopolyEventPage(html, opts = {}) {
 /**
  * Turn one `.event-block` card into a single Discord-friendly line.
  * Handles:
- *  - Event name (bold span or img alt, with safe fallbacks)
+ *  - Event name (link text inside .event-block__name, with safe fallbacks)
  *  - Start/end times from `.local-date` (via data-date UTC timestamp)
- *  - Duration from "Duration:" spans
- *  - Quick Wins rewards from `.reward-item`
+ *  - Duration from `.event-block__duration`
  */
 function stringifyEventBlock($block, $) {
   // Event name
   let name =
-    $block.find('> div:first-child span[style*="font-weight"]').first().text().trim() ||
-    $block.find('span[style*="font-weight"]').first().text().trim() ||
+    $block.find('.event-block__name a').first().text().trim() ||
+    $block.find('.event-block__name').first().text().trim() ||
     $block.find('img[alt]').first().attr('alt') ||
     'Event';
 
   // For Free Parking events, tag name with [cash] or [dice] based on commodity img src
   if (/free\s*parking/i.test(name)) {
-    const commoditySrc = $block.find('img[style*="max-height"]').first().attr('src') || '';
+    const commoditySrc = $block.find('.event-block__icon').first().attr('src') || '';
     if (/FreeParking_Money/i.test(commoditySrc)) {
       name += ' [cash]';
     } else if (/LuckyRoll/i.test(commoditySrc)) {
@@ -162,16 +163,14 @@ function stringifyEventBlock($block, $) {
     .get()
     .filter(Boolean);
 
-  // Duration (text like "Duration: 00:30:00")
+  // Duration (text like "Duration: 0:45")
   let duration = null;
-  $block.find('span').each((__, el) => {
-    const t = $(el).text().replace(/\s+/g, ' ').trim();
-    if (/^Duration:/i.test(t)) {
-      duration = t.replace(/^Duration:\s*/i, '');
-    }
-  });
+  const durationText = $block.find('.event-block__duration').first().text().replace(/\s+/g, ' ').trim();
+  if (/^Duration:/i.test(durationText)) {
+    duration = durationText.replace(/^Duration:\s*/i, '');
+  }
 
-  // Rewards (Quick Wins)
+  // Rewards (only present on some card variants)
   const rewards = $block
     .find('.reward-item')
     .map((__, ri) => {
@@ -191,6 +190,30 @@ function stringifyEventBlock($block, $) {
   }
 
   if (duration) line += `  •  Duration: ${duration}`;
+  if (rewards.length) line += `  •  ${rewards.join('  |  ')}`;
+
+  return line;
+}
+
+/**
+ * Turn one `.quick-win` card into a single Discord-friendly line.
+ * Handles:
+ *  - Task name from `.quick-win__task h3`
+ *  - Rewards from `.quick-win__reward` (label + quantity)
+ */
+function stringifyQuickWin($block, $) {
+  const name = $block.find('.quick-win__task h3').first().text().trim() || 'Task';
+
+  const rewards = $block
+    .find('.quick-win__reward')
+    .map((__, ri) => {
+      const what = $(ri).find('.quick-win__reward-label').first().text().trim() || 'Reward';
+      const qty = $(ri).find('.quick-win__reward-quantity').first().text().trim();
+      return qty ? `${what} x${qty}` : what;
+    })
+    .get();
+
+  let line = `**${name}**`;
   if (rewards.length) line += `  •  ${rewards.join('  |  ')}`;
 
   return line;
