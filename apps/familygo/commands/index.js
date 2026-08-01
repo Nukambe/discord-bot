@@ -5,6 +5,7 @@
 // This static list lets the packaged build reach the same command modules
 // through an ordinary static import, which bundlers can inline.
 import config from "./config.js";
+import futureEvents from "./future-events.js";
 import giftRotation from "./giftRotation.js";
 import highRoller from "./highRoller.js";
 import next from "./next.js";
@@ -16,6 +17,7 @@ import stickerRequest from "./sticker-request.js";
 
 export const staticCommands = [
   config,
+  futureEvents,
   giftRotation,
   highRoller,
   next,

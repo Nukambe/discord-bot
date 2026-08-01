@@ -5,6 +5,7 @@ import { formatMogoDiscordMessage } from "./formatEvent.js";
 import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
 import { postEvent } from "./postEvent.js";
+import { postFutureEventsToDiscord } from "./postFutureEvents.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -229,6 +230,7 @@ const parseHHmm = (str, fallbackHour, fallbackMinute) => {
 
 let dailyPostTask = null;
 let giftRotationTask = null;
+let futureEventsTask = null;
 
 /**
  * (Re)start the daily-post cron using the given db's schedule.
@@ -337,6 +339,27 @@ const startGiftRotationCron = (client, db) => {
     );
 };
 
+/**
+ * Start the fixed-schedule future-events cron: runs once at 12am America/New_York,
+ * posting yesterday's Monopoly GO Wiki news posts (excluding daily "Today's Events" posts).
+ */
+const startFutureEventsCron = (client) => {
+    if (futureEventsTask) futureEventsTask.stop();
+
+    futureEventsTask = cron.schedule(
+        "0 0 * * *",
+        async () => {
+            console.log("📰 Running future-events post...");
+            try {
+                await postFutureEventsToDiscord(client);
+            } catch (err) {
+                console.error("💥 Future events cron failed:", err);
+            }
+        },
+        { timezone: "America/New_York" }
+    );
+};
+
 client.once(Events.ClientReady, async () => {
     console.log(`✅ Discord ready as ${client.user.tag}`);
 
@@ -350,6 +373,7 @@ client.once(Events.ClientReady, async () => {
 
     startDailyPostCron(client, db);
     startGiftRotationCron(client, db);
+    startFutureEventsCron(client);
 
     // Whenever a command updates the db, tear down and rebuild both crons
     // from the new schedule.
