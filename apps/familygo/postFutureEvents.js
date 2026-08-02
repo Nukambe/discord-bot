@@ -1,14 +1,10 @@
 import { getMogoWikiNews, getFutureEventPosts } from "./getFutureEvents.js";
 import { getMogoEventPage } from "./getEvents.js";
 import { parseFutureEventPost } from "./parseFutureEventPost.js";
-import { getFreeDiceLinks } from "./getFreeDiceLinks.js";
 import { getYesterdayEstDateString } from "../../util/dateUtils.js";
 
-const FREE_DICE_LINKS_URL = "https://monopolygo.wiki/latest-reward-links";
-
-// Live channels for /future-events posts. Hardcoded (not env-based) per request — fill in.
+// Live channels for /future-events posts. Hardcoded (not env-based) per request.
 const FUTURE_EVENTS_CHANNEL_ID = "1393942240300372008";
-const FREE_DICE_LINKS_CHANNEL_ID = "1390326248055767184";
 const SPECIAL_EVENTS_CHANNEL_ID = "1393942240300372008"; // 🏆 special-events
 const GOLDEN_BLITZ_CHANNEL_ID = "1398027599472754822";
 const ALBUM_PREVIEWS_CHANNEL_ID = "1449448347965460553";
@@ -52,11 +48,11 @@ const CATEGORY_ROUTES = {
 
 /**
  * Find yesterday's (America/New_York) Monopoly GO Wiki news posts — excluding the daily
- * "Today's Events" posts, which are handled by the separate daily-events cron/command —
- * and post one Discord message per post. The "Free Dice Links Today" post gets special
- * handling: one message per individual reward link that first became available on the
- * target date (see postFreeDiceLinks). Other posts route to a channel/banner based on
- * their category tag (see CATEGORY_ROUTES), falling back to FUTURE_EVENTS_CHANNEL_ID.
+ * "Today's Events" posts, which are handled by the separate daily-events cron/command, and
+ * the "Free Dice Links Today" post, which is handled by postFreeDiceLinksForToday as part
+ * of the daily-post flow — and post one Discord message per post. Each post routes to a
+ * channel/banner based on its category tag (see CATEGORY_ROUTES), falling back to
+ * FUTURE_EVENTS_CHANNEL_ID.
  *
  * @param {import('discord.js').Client} client - A logged-in Discord client.
  * @param {{ debug?: boolean }} [opts]
@@ -86,11 +82,6 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
 
   for (const post of posts) {
     try {
-      if (post.url.replace(/\/$/, "") === FREE_DICE_LINKS_URL) {
-        await postFreeDiceLinks(client, post.url, targetEstDate, { debug });
-        continue;
-      }
-
       const postHtml = await getMogoEventPage(post.url, { debug });
       if (!postHtml) {
         console.error(`❌ Unable to fetch post page: ${post.url}`);
@@ -138,64 +129,10 @@ async function postFutureEvent(client, data, opts = {}) {
     .slice(0, MAX_EXTRA_IMAGE_EMBEDS)
     .map((url) => ({ image: { url } }));
 
-  await channel.send({ content: route?.banner || "", embeds: [mainEmbed, ...imageEmbeds] });
-}
+  // Embed titles don't render markdown, so the big-header styling has to live in the
+  // message content — the embed keeps its own (plain) title as the clickable link.
+  const bannerLine = route?.banner ? `${route.banner}\n` : "";
+  const content = `${bannerLine}# ${data.title}`;
 
-async function postFreeDiceLinks(client, postUrl, targetEstDate, opts = {}) {
-  const { debug = false } = opts;
-
-  const html = await getMogoEventPage(postUrl, { debug });
-  if (!html) {
-    console.error(`❌ Unable to fetch free dice links page: ${postUrl}`);
-    return;
-  }
-
-  const links = getFreeDiceLinks(html, targetEstDate, { debug });
-  if (!links.length) {
-    console.log(`ℹ️ No newly-available free dice links for ${targetEstDate}`);
-    return;
-  }
-
-  const channelId = debug ? process.env.TEST_CHANNEL_ID : FREE_DICE_LINKS_CHANNEL_ID;
-  if (!channelId) throw new Error("[postFreeDiceLinks] Missing target channel ID");
-  const channel = await client.channels.fetch(channelId);
-
-  for (const link of links) {
-    await channel.send({ content: formatFreeDiceLinkContent(link) });
-    console.log(`✅ Posted free dice link: ${link.claimUrl}`);
-  }
-}
-
-function formatFreeDiceLinkContent(link) {
-  const label =
-    link.rewardName.toLowerCase() === "rolls" ? "🎲 FREE DICE" : `🎁 FREE ${link.rewardName.toUpperCase()}`;
-  const validUntil = link.endDate ? formatEstDateTime(link.endDate) : "Unknown";
-
-  return [
-    `${link.quantity} ${label}`,
-    `Valid until: ${validUntil}`,
-    "",
-    link.claimUrl,
-    "",
-    "Free Dice links are from MOGO WIKI which is not affiliated with Scopely. Check the official MONOPOLY GO! 🎁 giveaways channel for links directly from Scopely.",
-  ].join("\n");
-}
-
-// Formats a Date as "August 3, 2026 11:27 AM" in America/New_York. Uses typed parts
-// (see toEstDateString in util/dateUtils.js) rather than a locale-formatted string, for
-// the same reason: the packaged/pkg build's Node runtime formats locale strings
-// differently than plain Node.
-function formatEstDateTime(date) {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/New_York",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(date);
-  const map = {};
-  for (const p of parts) map[p.type] = p.value;
-  return `${map.month} ${map.day}, ${map.year} ${map.hour}:${map.minute} ${map.dayPeriod}`;
+  await channel.send({ content, embeds: [mainEmbed, ...imageEmbeds] });
 }

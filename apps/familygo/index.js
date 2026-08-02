@@ -6,6 +6,7 @@ import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
 import { postEvent } from "./postEvent.js";
 import { postFutureEventsToDiscord } from "./postFutureEvents.js";
+import { postFreeDiceLinksForToday } from "./postFreeDiceLinks.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -87,6 +88,14 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
         console.log("✅ Successfully posted event to Discord");
     } catch (err) {
         console.error("💥 Failed to post event to Discord:", err);
+    }
+
+    // Step 7: Post today's newly-available free dice links (independent of the steps
+    // above, so a failure here doesn't affect the main daily event post).
+    try {
+        await postFreeDiceLinksForToday(client, { debug });
+    } catch (err) {
+        console.error("💥 Failed to post free dice links:", err);
     }
 
     console.log("🏁 Finished postEventToDiscord\n");
