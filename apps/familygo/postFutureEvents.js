@@ -35,7 +35,7 @@ const CATEGORY_ROUTES = {
   },
   "partner-events": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner: "<:high_five:1531689502098063500> UPCOMING PARTNERS <:high_five:1531689502098063500>",
+    banner: "<:high_five:1533293260678627448> UPCOMING PARTNERS <:high_five:1533293260678627448>",
   },
   "adventure-club": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
@@ -177,7 +177,7 @@ function formatFreeDiceLinkContent(link) {
     "",
     link.claimUrl,
     "",
-    "Free Dice links are from MOGO WIKI which is not affiliated with Scopely. Check the official channel for links directly from Scopely.",
+    "Free Dice links are from MOGO WIKI which is not affiliated with Scopely. Check the official MONOPOLY GO! 🎁 giveaways channel for links directly from Scopely.",
   ].join("\n");
 }
 
