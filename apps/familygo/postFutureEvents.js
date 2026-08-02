@@ -131,9 +131,12 @@ async function postFutureEvent(client, data, opts = {}) {
     footer: { text: "monopolygo.wiki" },
   };
 
+  // No `url` field here on purpose: Discord groups consecutive embeds that share the same
+  // `url` into a side-by-side image gallery. Leaving it unset makes each embed stand alone,
+  // so they stack vertically instead.
   const imageEmbeds = data.editorialImages
     .slice(0, MAX_EXTRA_IMAGE_EMBEDS)
-    .map((url) => ({ url: data.url, image: { url } }));
+    .map((url) => ({ image: { url } }));
 
   await channel.send({ content: route?.banner || "", embeds: [mainEmbed, ...imageEmbeds] });
 }
@@ -174,7 +177,7 @@ function formatFreeDiceLinkContent(link) {
     "",
     link.claimUrl,
     "",
-    "These links are confirmed to be working. Please keep in mind that they do expire.",
+    "Free Dice links are from MOGO WIKI which is not affiliated with Scopely. Check the official channel for links directly from Scopely.",
   ].join("\n");
 }
 
