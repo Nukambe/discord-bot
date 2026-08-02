@@ -45,13 +45,33 @@ export function getTodayPrettyDate() {
 }
 
 /**
+ * Format a Date's calendar date in America/New_York as "YYYY-MM-DD".
+ * Reads typed parts (year/month/day) from Intl.DateTimeFormat rather than parsing a
+ * locale-formatted string — the packaged/pkg build's Node runtime has been observed to
+ * format `toLocaleDateString('en-CA', ...)` differently than plain Node (e.g. "8/1/2026"
+ * instead of "2026-08-01"), which silently breaks split("-")-based parsing.
+ * @param {Date} date
+ * @returns {string} e.g. "2026-08-01"
+ */
+export function toEstDateString(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return `${map.year}-${map.month}-${map.day}`;
+}
+
+/**
  * Get yesterday's calendar date in America/New_York, as "YYYY-MM-DD".
  * Used to find posts published "the day before" relative to an America/New_York midnight cron.
  * @returns {string} e.g. "2026-08-01"
  */
 export function getYesterdayEstDateString() {
-  const todayEst = new Date().toLocaleDateString("en-CA", { timeZone: "America/New_York" }); // YYYY-MM-DD
-  const [y, m, d] = todayEst.split("-").map(Number);
+  const [y, m, d] = toEstDateString(new Date()).split("-").map(Number);
   const yesterday = new Date(y, m - 1, d - 1);
   const yyyy = yesterday.getFullYear();
   const mm = String(yesterday.getMonth() + 1).padStart(2, "0");

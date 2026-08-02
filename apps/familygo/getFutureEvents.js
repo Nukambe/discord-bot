@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchWithPlaywright } from "../../util/fetchWithPlaywright.js";
 import { outputToFile } from "../../util/outputToFile.js";
+import { toEstDateString } from "../../util/dateUtils.js";
 
 const MOGO_WIKI_NEWS_URL = "https://monopolygo.wiki/news";
 const BASE_URL = "https://monopolygo.wiki";
@@ -63,7 +64,7 @@ export function getFutureEventPosts(html, targetEstDate, opts = {}) {
     const publishDate = new Date(datetime);
     if (Number.isNaN(publishDate.getTime())) return;
 
-    const estDate = publishDate.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+    const estDate = toEstDateString(publishDate);
     if (estDate !== targetEstDate) return;
 
     let url;
