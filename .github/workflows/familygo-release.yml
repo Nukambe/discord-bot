@@ -1,0 +1,48 @@
+name: familygo-release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/familygo/**'
+      - 'build/familygo/build.mjs'
+      - 'util/**'
+      - 'package.json'
+      - 'package-lock.json'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npx playwright install chromium
+
+      - run: npm run build:familygo
+
+      # .env is delivered to the receiver separately, never through CI/releases.
+      - name: Strip local .env from build output
+        run: Remove-Item -Path dist/familygo/.env -ErrorAction SilentlyContinue
+
+      - name: Zip build output
+        run: Compress-Archive -Path dist/familygo/* -DestinationPath dist/familygo-release.zip
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $tag = "familygo-v${{ github.run_number }}"
+          gh release create $tag dist/familygo-release.zip `
+            --title $tag `
+            --notes "Automated build from ${{ github.sha }}"

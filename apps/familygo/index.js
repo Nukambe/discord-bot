@@ -1,6 +1,6 @@
 import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import cron from 'node-cron';
-import { formatDateSlug } from "../../util/dateUtils.js";
+import { formatDateSlug, toEstDateString, toEstTimeParts } from "../../util/dateUtils.js";
 import { formatMogoDiscordMessage } from "./formatEvent.js";
 import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
@@ -260,10 +260,8 @@ const startDailyPostCron = (client, db) => {
         async () => {
             // Get current time components in Eastern
             const now = new Date();
-            const estDateStr = now.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }); // YYYY-MM-DD
-            const estTimeStr = now.toLocaleTimeString('en-US', { timeZone: 'America/New_York', hour12: false });
-            const [estYear, estMonth, estDay] = estDateStr.split('-').map(Number);
-            const [estHour, estMinute] = estTimeStr.split(':').map(Number);
+            const [estYear, estMonth, estDay] = toEstDateString(now).split('-').map(Number);
+            const { hour: estHour, minute: estMinute } = toEstTimeParts(now);
 
             // Window: windowStartTime through windowEndTime the next day
             const afterWindowStart = estHour > startHour || (estHour === startHour && estMinute >= startMinute);
@@ -300,7 +298,7 @@ const startGiftRotationCron = (client, db) => {
             // Pause window (configured via /config gift-rotation-pause)
             const pause = db.giftRotation?.pause;
             if (pause?.start && pause?.end) {
-                const nowEst = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+                const nowEst = toEstDateString(new Date());
                 if (nowEst >= pause.start && nowEst <= pause.end) {
                     console.log(`⏸️ Gift rotation paused (${pause.start}–${pause.end} pause window). Skipping.`);
                     return;

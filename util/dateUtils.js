@@ -66,6 +66,24 @@ export function toEstDateString(date) {
 }
 
 /**
+ * Get the current time-of-day in America/New_York, read via typed parts (not
+ * a parsed locale string) for the same reason as toEstDateString above.
+ * @param {Date} date
+ * @returns {{hour: number, minute: number}}
+ */
+export function toEstTimeParts(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return { hour: Number(map.hour), minute: Number(map.minute) };
+}
+
+/**
  * Get yesterday's calendar date in America/New_York, as "YYYY-MM-DD".
  * Used to find posts published "the day before" relative to an America/New_York midnight cron.
  * @returns {string} e.g. "2026-08-01"

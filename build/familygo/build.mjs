@@ -19,7 +19,7 @@ fs.mkdirSync(outDir, { recursive: true });
 
 console.log('1/4 Bundling apps/familygo with esbuild...');
 execFileSync('npx', [
-  'esbuild', 'apps/familygo/index.js',
+  'esbuild', 'apps/familygo/launch.js',
   '--bundle', '--platform=node', '--target=node20', '--format=cjs',
   '--packages=external',
   `--outfile=${bundlePath}`,
