@@ -260,3 +260,38 @@ test('CORS is granted to the extension origin and withheld from others', async (
     await close();
   }
 });
+
+test('the private network access preflight is answered', async () => {
+  // The EBS runs on the streamer's machine while the extension page is served
+  // from a public origin, so Chrome asks permission to cross into the private
+  // network. Without this header every request is blocked and the overlay just
+  // shows nothing, with no error a streamer would ever find.
+  const { base, close } = await startEbs();
+
+  try {
+    const res = await fetch(`${base}/api/state`, {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://testclient.ext-twitch.tv',
+        'access-control-request-method': 'GET',
+        'access-control-request-private-network': 'true',
+      },
+    });
+
+    assert.equal(res.status, 204);
+    assert.equal(res.headers.get('access-control-allow-private-network'), 'true');
+  } finally {
+    await close();
+  }
+});
+
+test('the private network header is not sent when unrequested', async () => {
+  const { base, close } = await startEbs();
+
+  try {
+    const res = await fetch(`${base}/health`, { headers: { origin: 'https://testclient.ext-twitch.tv' } });
+    assert.equal(res.headers.get('access-control-allow-private-network'), null);
+  } finally {
+    await close();
+  }
+});

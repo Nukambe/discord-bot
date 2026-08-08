@@ -1,27 +1,81 @@
 # Item Tooltips — Twitch Extension
 
 Viewers hover an item on the stream and get a tooltip explaining what it does.
-The game runs in an Android emulator and exposes no API, so item state is read
-off the screen with computer vision on the streamer's PC.
+
+The game is **Kuroko's Basketball: Street Rivals**, running in an Android
+emulator. It exposes no API, so item state is read off the screen with computer
+vision on the streamer's PC.
+
+**This runs entirely on your machine.** The EBS binds loopback by default and
+nothing is deployed to a host — see [Local-only and who can
+see tooltips](#local-only-and-who-can-see-tooltips) for what that means for
+viewers, because it is not free.
 
 Three pieces, following the architecture the TFT Tooltips extension uses:
 
 ```
-  Android emulator                streamer's PC                     cloud                    viewer's browser
- ┌────────────────┐   adb      ┌─────────────────┐   HTTPS      ┌──────────────┐   HTTPS   ┌──────────────────┐
- │  the game      │──screencap─▶│  companion/     │──snapshot───▶│  ebs/        │◀──poll────│  frontend/       │
- │                │             │  crop + match   │   4/sec      │  ring buffer │           │  hover + tooltip │
- └────────────────┘             └─────────────────┘              └──────────────┘           └──────────────────┘
-                                                                        │  PubSub nudge ~1/s      ▲
-                                                                        └─────────────────────────┘
+  YOUR PC
+  ══════════════════════════════════════════════════════════
+
+    Android emulator  ──adb screencap──▶  companion/
+    (Street Rivals)                       crop + match
+                                               │
+                                               │  POST snapshot, 4/sec
+                                               ▼
+                                             ebs/
+                                       ring buffer, 60s
+  ══════════════════════════════════════════════════════════
+                                               │
+                          poll 1/s  +  PubSub nudge ~1/s
+                                               ▼
+                                          frontend/
+                                       hover + tooltip
+                                     (viewer's browser)
+
+  Only the bottom arrow leaves your machine. On loopback it resolves
+  for you but not for remote viewers — see below.
 ```
 
-| Directory    | Runs where          | Job |
-|--------------|---------------------|-----|
-| `companion/` | Streamer's PC       | Grabs frames over adb, identifies items, POSTs snapshots |
-| `ebs/`       | Heroku (or similar) | Authenticates, buffers game state, serves it to viewers |
-| `frontend/`  | Twitch's CDN        | Transparent overlay: hover regions and tooltips |
-| `shared/`    | both                | Wire format and coordinate helpers |
+| Directory    | Runs where     | Job |
+|--------------|----------------|-----|
+| `companion/` | Your PC        | Grabs frames over adb, identifies items, POSTs snapshots |
+| `ebs/`       | Your PC        | Authenticates, buffers game state, serves it to viewers |
+| `frontend/`  | Twitch's CDN   | Transparent overlay: hover regions and tooltips |
+| `shared/`    | both           | Wire format and coordinate helpers |
+
+## Local-only and who can see tooltips
+
+The EBS runs on your machine and binds `127.0.0.1`. That is fine for the two
+components that also run on your machine, and fine for *you* watching your own
+stream — browsers treat `localhost` and `127.0.0.1` as trustworthy origins, so
+the HTTPS extension page is allowed to call them without mixed-content blocking.
+
+**It does not work for remote viewers.** Their browser resolves `localhost` to
+*their own* machine, finds nothing there, and shows no tooltips. There is no
+configuration that changes this; it is how loopback addresses work.
+
+So:
+
+| What you want | What you need |
+|---|---|
+| Develop and test it yourself | Nothing extra. Run the EBS locally. |
+| Watch your own stream and see tooltips | Nothing extra. |
+| **Real viewers see tooltips** | Expose the EBS over HTTPS — a tunnel (`cloudflared tunnel --url http://localhost:8080`, ngrok) or a small host. |
+
+If you go the tunnel route, the code does not change: point
+`TWITCHEXT_EBS_URL` at the tunnel hostname and re-run
+`npm run twitchext:package`. You must also add that hostname to your
+extension's **Allowlist for URL Fetching Domains** in the Twitch console, or
+Twitch's CSP blocks the request regardless of what your server says.
+
+Two things the EBS does specifically to make the local case work:
+
+- Answers Chrome's **Private Network Access** preflight
+  (`Access-Control-Allow-Private-Network`). A public page calling a loopback
+  address triggers this, and without the header every request is blocked with no
+  visible error beyond an empty overlay.
+- Allows the developer-rig `localhost` origins by default
+  (`TWITCHEXT_ALLOW_LOCAL=false` turns that off).
 
 ## Three design decisions worth knowing
 
@@ -74,17 +128,22 @@ companion secret with:
 node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 ```
 
-### 2. Deploy the EBS
+### 2. Run the EBS
 
 ```bash
-npm run twitchext:ebs        # locally on :8080
+npm run twitchext:ebs        # http://127.0.0.1:8080
 ```
 
-It binds `process.env.PORT` and holds nothing worth persisting, so any Node host
-works. It must be reachable over **HTTPS** — Twitch loads the extension over
-HTTPS and a plain-http backend is blocked as mixed content.
+It holds nothing worth persisting — a restart just means the companion
+repopulates within a frame — so there is nothing to back up and no database.
 
-Set `TWITCHEXT_ALLOW_LOCAL=true` only while testing against the developer rig.
+`TWITCHEXT_HOST` overrides the bind address and `TWITCHEXT_PORT` the port. Keep
+it on loopback unless you have a specific reason not to: binding `0.0.0.0`
+exposes your game state to everything on your local network.
+
+To let real viewers reach it, put a tunnel in front rather than changing the
+bind — see [Local-only and who can see
+tooltips](#local-only-and-who-can-see-tooltips).
 
 ### 3. Calibrate the slot layout
 
@@ -135,11 +194,16 @@ matching. Use `--replace` to discard an item's existing fingerprints, and
 ### 5. Package and upload the frontend
 
 ```bash
-TWITCHEXT_EBS_URL=https://your-ebs.example.com npm run twitchext:package
+npm run twitchext:package                                        # local: http://127.0.0.1:8080
+TWITCHEXT_EBS_URL=https://your-tunnel.example.com npm run twitchext:package   # for viewers
 ```
 
-Produces `dist/twitchext-frontend.zip` with the EBS URL baked in. Upload under
-**Files → Asset Hosting**:
+Produces `dist/twitchext-frontend.zip` with the EBS URL baked in — Twitch serves
+extension files from its own CDN with no build step, so the URL cannot be
+configured at runtime. Building against loopback prints a warning reminding you
+viewers won't reach it.
+
+Upload under **Files → Asset Hosting**:
 
 | Twitch field                          | Path                  |
 |---------------------------------------|-----------------------|
@@ -171,6 +235,10 @@ until tooltips line up with what they can see.
 
 | Env var | Default | Effect |
 |---|---|---|
+| `TWITCHEXT_HOST` | `127.0.0.1` | EBS bind address. `0.0.0.0` exposes game state to your LAN |
+| `TWITCHEXT_PORT` | `8080` | EBS port |
+| `TWITCHEXT_ALLOW_LOCAL` | on | Allows developer-rig localhost origins through CORS |
+| `TWITCHEXT_PUBSUB` | on | `false` runs poll-only |
 | `TWITCHEXT_CAPTURE_FPS` | 4 | Higher costs CPU and adb bandwidth for little gain |
 | `TWITCHEXT_MIN_SCORE` | 0.86 | Match confidence floor. Lower = more matches, more wrong ones |
 | `TWITCHEXT_MIN_MARGIN` | 0.03 | How far ahead of the runner-up a match must be |

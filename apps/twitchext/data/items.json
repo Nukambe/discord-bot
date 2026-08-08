@@ -1,7 +1,8 @@
 {
   "version": 1,
   "updatedAt": null,
-  "note": "Tooltip copy is seeded from apps/nukoko/commands/lucky-items.js. 'fingerprints' are learned from live captures via `npm run twitchext:learn -- <id>` and are base64 int8 vectors, 768 values each.",
+  "game": "Kuroko's Basketball: Street Rivals",
+  "note": "Tooltip copy is seeded from apps/nukoko/commands/lucky-items.js (SP Midorima's Lucky Items). 'fingerprints' are learned from live captures via `npm run twitchext:learn -- <id>` and are base64 int8 vectors, 768 values each.",
   "items": {
     "frog": {
       "name": "🐸 Frog",

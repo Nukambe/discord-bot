@@ -173,6 +173,15 @@ function applyCors(req, res, allowedOrigins) {
   res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
   res.setHeader('access-control-allow-headers', 'authorization, content-type');
   res.setHeader('access-control-max-age', '86400');
+
+  // Private Network Access. The extension page is served from a public origin
+  // (ext-twitch.tv) but this EBS listens on a private/loopback address, so
+  // Chrome sends a preflight asking permission to cross that boundary. Without
+  // this header the browser blocks every request and the overlay silently shows
+  // nothing. Only relevant because the EBS runs on the streamer's own machine.
+  if (req.headers['access-control-request-private-network'] === 'true') {
+    res.setHeader('access-control-allow-private-network', 'true');
+  }
 }
 
 function matchOrigin(rule, origin) {

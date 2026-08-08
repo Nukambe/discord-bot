@@ -18,16 +18,25 @@ const frontendDir = fileURLToPath(new URL('../frontend/', import.meta.url));
 const distDir = fileURLToPath(new URL('../dist/', import.meta.url));
 const zipPath = path.join(distDir, 'twitchext-frontend.zip');
 
-const ebsUrl = process.env.TWITCHEXT_EBS_URL;
-if (!ebsUrl) {
-  console.error('Missing TWITCHEXT_EBS_URL — the frontend needs to know where your EBS is deployed.');
+const ebsUrl = process.env.TWITCHEXT_EBS_URL || 'http://127.0.0.1:8080';
+
+// http:// is only safe for loopback. Browsers treat localhost and 127.0.0.1 as
+// trustworthy origins, so an HTTPS extension page may call them without being
+// blocked as mixed content — but any other http:// host is blocked outright.
+const isLoopback = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(ebsUrl.replace(/\/$/, ''));
+
+if (!ebsUrl.startsWith('https://') && !isLoopback) {
+  console.error(`TWITCHEXT_EBS_URL must be https:// unless it is loopback (got "${ebsUrl}")`);
   process.exit(1);
 }
-if (!ebsUrl.startsWith('https://')) {
-  // Twitch loads the extension over HTTPS; a http:// EBS is blocked as mixed
-  // content and fails review, so catch it here rather than after upload.
-  console.error(`TWITCHEXT_EBS_URL must be https:// (got "${ebsUrl}")`);
-  process.exit(1);
+
+if (isLoopback) {
+  console.warn(
+    '⚠️  Building against a loopback EBS. This works for you and anyone running\n' +
+      '    the EBS on their own machine, but a remote viewer\'s browser resolves\n' +
+      '    localhost to THEIR machine, so they will see no tooltips. Point\n' +
+      '    TWITCHEXT_EBS_URL at a tunnel or host before going live.\n'
+  );
 }
 
 const staging = await mkdtemp(path.join(tmpdir(), 'twitchext-'));
