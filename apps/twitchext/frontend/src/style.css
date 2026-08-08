@@ -1,0 +1,157 @@
+/*
+ * Overlay styling.
+ *
+ * The single most important rule in this file is `pointer-events: none` on
+ * html/body. The extension iframe covers the entire video player, so without it
+ * every click on the player would land here instead of on Twitch's controls.
+ * Only the few elements that need a mouse opt back in.
+ */
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  pointer-events: none;
+  overflow: hidden;
+  font-family: 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#zones {
+  position: absolute;
+  inset: 0;
+}
+
+/* One per on-screen item. Invisible, but hoverable. */
+.zone {
+  position: absolute;
+  pointer-events: auto;
+  cursor: help;
+  border-radius: 6px;
+  transition: box-shadow 120ms ease, background-color 120ms ease;
+}
+
+.zone:hover {
+  background: rgba(145, 71, 255, 0.18);
+  box-shadow: inset 0 0 0 2px rgba(187, 134, 252, 0.9);
+}
+
+#tooltip {
+  position: fixed;
+  z-index: 10;
+  max-width: min(320px, 42vw);
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(187, 134, 252, 0.45);
+  background: rgba(14, 12, 20, 0.94);
+  color: #efeff1;
+  font-size: 13px;
+  line-height: 1.45;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  pointer-events: none; /* never let the tooltip eat the hover that spawned it */
+}
+
+#tooltip[hidden] {
+  display: none;
+}
+
+.tooltip-title {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 6px;
+}
+
+.tooltip-line {
+  position: relative;
+  padding-left: 12px;
+  margin-top: 3px;
+  color: #d3d3d8;
+}
+
+.tooltip-line::before {
+  content: '•';
+  position: absolute;
+  left: 0;
+  color: #bb86fc;
+}
+
+/*
+ * Settings affordance. Parked top-left: Twitch's own controls live along the
+ * bottom edge and the top-right, and overlapping them is a review failure.
+ */
+#settings {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(14, 12, 20, 0.55);
+  color: #efeff1;
+  font-size: 14px;
+  line-height: 26px;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: auto;
+  transition: opacity 150ms ease;
+}
+
+body:hover #settings,
+body.show-settings #settings {
+  opacity: 1;
+}
+
+#panel {
+  position: absolute;
+  top: 40px;
+  left: 8px;
+  display: none;
+  width: 220px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(14, 12, 20, 0.94);
+  color: #efeff1;
+  font-size: 12px;
+  pointer-events: auto;
+}
+
+body.show-settings #panel {
+  display: block;
+}
+
+#panel label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+#panel input[type='range'] {
+  width: 100%;
+  accent-color: #9147ff;
+}
+
+#panel .hint {
+  margin: 8px 0 0;
+  color: #adadb8;
+  line-height: 1.4;
+}
+
+#status {
+  position: absolute;
+  bottom: 12%; /* clear of the player control bar */
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(14, 12, 20, 0.85);
+  color: #ffb3b3;
+  font-size: 12px;
+}
+
+#status[hidden] {
+  display: none;
+}

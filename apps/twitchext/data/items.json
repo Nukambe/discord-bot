@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "updatedAt": null,
+  "note": "Tooltip copy is seeded from apps/nukoko/commands/lucky-items.js. 'fingerprints' are learned from live captures via `npm run twitchext:learn -- <id>` and are base64 int8 vectors, 768 values each.",
+  "items": {
+    "frog": {
+      "name": "🐸 Frog",
+      "lines": [
+        "Reduces defensive zone by 1m and displays the defensive zone in frog shape."
+      ],
+      "fingerprints": []
+    },
+    "tanuki": {
+      "name": "🦝 Tanuki",
+      "lines": [
+        "When 3-pointers are made, generates a Tanuki-shaped area at that location",
+        "Zone: Dribble speed and off-ball speed +3 for 2s",
+        "Zone: +10% 3pt Accuracy"
+      ],
+      "fingerprints": []
+    },
+    "raccoon": {
+      "name": "🦝 Raccoon",
+      "lines": ["Faster shots", "Open shots guaranteed", "5% Contest Resist"],
+      "fingerprints": []
+    },
+    "wooden-bear": {
+      "name": "🐻 Wooden Bear",
+      "lines": [
+        "When using skills, opponents in ankle-broken state within the defensive zone cannot interfere with Midorima. His shots count as open shots.",
+        "When using skill shots, opponents must jump"
+      ],
+      "fingerprints": []
+    },
+    "rubber-duck": {
+      "name": "🦆 Rubber Duck",
+      "lines": ["Shooting skills range +1m", "Extended Range: 3pt Accuracy +5%"],
+      "fingerprints": []
+    }
+  }
+}

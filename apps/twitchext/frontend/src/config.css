@@ -1,0 +1,161 @@
+/* Broadcaster config page. Unlike the overlay this is a normal, opaque page. */
+
+:root {
+  color-scheme: dark;
+  --bg: #0e0c14;
+  --panel: #18161f;
+  --line: #2f2b3a;
+  --text: #efeff1;
+  --muted: #adadb8;
+  --accent: #9147ff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 20px;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.5 'Inter', 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+
+main {
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+h1 {
+  margin: 0 0 4px;
+  font-size: 20px;
+}
+
+h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.lede {
+  margin: 0 0 20px;
+  color: var(--muted);
+}
+
+section {
+  margin-bottom: 20px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+section p {
+  margin: 0 0 12px;
+}
+
+.status {
+  padding: 10px 12px;
+  border-radius: 6px;
+  border-left: 3px solid var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.status--ok {
+  border-left-color: #00c176;
+}
+.status--waiting {
+  border-left-color: #f5a623;
+}
+.status--stale {
+  border-left-color: #f5a623;
+}
+.status--error {
+  border-left-color: #eb0400;
+}
+
+dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  margin: 12px 0 0;
+  font-size: 13px;
+}
+
+dt {
+  color: var(--muted);
+}
+
+dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+output {
+  min-width: 48px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.hint {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #772ce8;
+}
+
+#saved {
+  margin-left: 10px;
+  color: #00c176;
+  font-size: 13px;
+}
+
+code {
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+}
+
+/* 16:9 stand-in for the stream canvas, with the game rect drawn inside it. */
+.frame-preview {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: repeating-conic-gradient(#1c1a24 0% 25%, #16141d 0% 50%) 50% / 16px 16px;
+}
+
+#frame-rect {
+  position: absolute;
+  display: none;
+  border: 2px solid var(--accent);
+  border-radius: 2px;
+  background: rgba(145, 71, 255, 0.15);
+}
