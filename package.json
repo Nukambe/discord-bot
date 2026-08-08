@@ -18,6 +18,12 @@
     "start": "node index.js",
     "build:familygo": "node build/familygo/build.mjs",
     "spotify:auth": "node apps/twitch/lib/spotifyAuthBootstrap.js",
+    "twitchext:ebs": "node apps/twitchext/ebs/index.js",
+    "twitchext:companion": "node apps/twitchext/companion/index.js",
+    "twitchext:calibrate": "node apps/twitchext/companion/calibrate.js",
+    "twitchext:learn": "node apps/twitchext/companion/learn.js",
+    "twitchext:package": "node apps/twitchext/build/package.mjs",
+    "twitchext:test": "node --test \"apps/twitchext/tests/*.test.js\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Item Tooltips — Setup</title>
+    <link rel="stylesheet" href="src/config.css" />
+    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Item Tooltips</h1>
+      <p class="lede">
+        Viewers hover an item on your stream and see what it does. This page sets the defaults they start with.
+      </p>
+
+      <section>
+        <h2>Companion status</h2>
+        <div id="status" class="status status--waiting">Checking…</div>
+        <dl id="details"></dl>
+      </section>
+
+      <section>
+        <h2>Default stream delay</h2>
+        <p>
+          Viewers see your video several seconds after it happens, so tooltips have to be held back by the same amount.
+          This is the value they start on — each viewer can fine-tune it themselves.
+        </p>
+        <div class="row">
+          <input id="delay" type="range" min="0" max="30000" step="250" value="8000" />
+          <output id="delay-value">8.0s</output>
+        </div>
+        <p class="hint">
+          Not sure? Open your own stream in a browser, watch the clock in your emulator, and count the gap. Typical
+          values are 4–6s on low latency mode and 10–20s otherwise.
+        </p>
+        <button id="save" type="button">Save</button>
+        <span id="saved" hidden>Saved</span>
+      </section>
+
+      <section>
+        <h2>Game position</h2>
+        <p>
+          Where the emulator sits inside your scene. This comes from the companion app's <code>layout.json</code> — edit
+          it there and it updates here.
+        </p>
+        <div id="frame" class="frame-preview">
+          <div id="frame-rect"></div>
+        </div>
+        <p class="hint" id="frame-text">Waiting for the companion app…</p>
+      </section>
+    </main>
+
+    <script type="module" src="src/config.js"></script>
+  </body>
+</html>
