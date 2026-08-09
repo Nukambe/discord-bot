@@ -137,3 +137,7 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# twitchext build output and calibration captures
+apps/twitchext/dist/
+apps/twitchext/data/calibration.png

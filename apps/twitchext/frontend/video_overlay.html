@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Item Tooltips</title>
+    <link rel="stylesheet" href="src/style.css" />
+    <!--
+      The Twitch helper is the one script allowed from outside the zip; every
+      other asset must ship inside it or the extension fails review.
+    -->
+    <script src="https://extension-files.twitch.tv/helper/v1/twitch-ext.min.js"></script>
+  </head>
+  <body>
+    <!-- Hover targets, one per visible item. Everything else stays click-through. -->
+    <div id="zones"></div>
+
+    <div id="tooltip" role="tooltip" hidden></div>
+
+    <button id="settings" type="button" title="Tooltip sync settings" aria-label="Tooltip sync settings">⚙</button>
+
+    <div id="panel">
+      <label for="delay">Stream delay</label>
+      <input id="delay" type="range" min="0" max="30000" step="250" value="8000" />
+      <span id="delay-value">8.0s</span>
+      <p class="hint">Drag until tooltips line up with the items you can see.</p>
+    </div>
+
+    <div id="status" hidden></div>
+
+    <script type="module" src="src/overlay.js"></script>
+  </body>
+</html>
