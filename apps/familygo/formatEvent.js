@@ -22,7 +22,7 @@ const EMOJI_MAP = [
   { re: /\blucky\s*chance\b/i, emoji: "<:LuckyChance:1437570240019173516>" },
   { re: /\blandmark\s*rush\b/i, emoji: "<:LandmarkRush:1437570782925684908>" },
   { re: /\bbattleship\b/i, emoji: "<:Battleship_MGW:1437905064260927620>" },
-  { re: /\btournament\b/i, emoji: "<:tournament:1437914131180294355>" },
+  { re: /\btournament\b/i, emoji: "<:tycoon_class:1533835656315539637>" },
   { re: /\bcarnivalgames\b/i, emoji: "<:carnivalgames:1437914039203270810>" },
   { re: /\btycoon\s*racers\b/i, emoji: "<:RaceCup_Currency_Icon:1441936191870992454>" },
   { re: /\bfortune\s*teller\b/i, emoji: "<:FortuneTeller:1441933906096947300>" },

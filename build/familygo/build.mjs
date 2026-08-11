@@ -40,7 +40,7 @@ const chromiumDir = fs.existsSync(chromiumCacheRoot)
   ? fs.readdirSync(chromiumCacheRoot).find((d) => d.startsWith('chromium-') && !d.includes('headless_shell'))
   : null;
 if (!chromiumDir) {
-  console.warn('   ⚠️ Could not find a cached Chromium under %LOCALAPPDATA%\\ms-playwright — run `npx playwright install chromium` first, then re-run this build.');
+  console.warn('   ⚠️ Could not find a cached Chromium under %LOCALAPPDATA%\\ms-playwright — run `npx playwright-core install chromium` first, then re-run this build.');
 } else {
   fs.cpSync(path.join(chromiumCacheRoot, chromiumDir, 'chrome-win'), path.join(outDir, 'chrome-win'), { recursive: true });
 }

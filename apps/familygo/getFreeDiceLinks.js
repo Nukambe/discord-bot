@@ -8,6 +8,10 @@ import { toEstDateString } from "../../util/dateUtils.js";
  * available on a previous day were already posted then, so re-including them
  * here would duplicate them.
  *
+ * Passing a falsy `targetEstDate` skips the date filter entirely, returning every
+ * card on the page — used in debug mode to get a link to post even when nothing
+ * newly became available today.
+ *
  * Each card looks like:
  *   <article class="reward-link">
  *     <h3>Free Rolls Reward Link</h3>
@@ -17,13 +21,13 @@ import { toEstDateString } from "../../util/dateUtils.js";
  *   </article>
  *
  * @param {string} html - Raw HTML of the /latest-reward-links page.
- * @param {string} targetEstDate - e.g. "2026-08-01"
+ * @param {string} [targetEstDate] - e.g. "2026-08-01"; omit/falsy to skip the date filter.
  * @param {{ debug?: boolean }} [opts]
  * @returns {Array<{ quantity: string, rewardName: string, startDate: Date, endDate: Date|null, claimUrl: string }>}
  */
 export function getFreeDiceLinks(html, targetEstDate, opts = {}) {
   const { debug = false } = opts;
-  if (!html || !targetEstDate) return [];
+  if (!html) return [];
 
   const $ = cheerio.load(html);
   const links = [];
@@ -46,7 +50,7 @@ export function getFreeDiceLinks(html, targetEstDate, opts = {}) {
     if (Number.isNaN(startDate.getTime())) return;
     const endDate = endAttr ? new Date(endAttr) : null;
 
-    if (toEstDateString(startDate) !== targetEstDate) return;
+    if (targetEstDate && toEstDateString(startDate) !== targetEstDate) return;
 
     links.push({ quantity, rewardName, startDate, endDate, claimUrl });
   });

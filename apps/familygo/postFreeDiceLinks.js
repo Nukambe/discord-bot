@@ -31,7 +31,21 @@ export const postFreeDiceLinksForToday = async (client, opts = {}) => {
     return;
   }
 
-  const links = getFreeDiceLinks(html, targetEstDate, { debug });
+  let links = getFreeDiceLinks(html, targetEstDate, { debug });
+  let debugFallback = false;
+
+  // Debug mode is used to visually check formatting/posting, which needs an actual
+  // message in the channel — fall back to the first link on the page (regardless of
+  // its date) rather than silently posting nothing.
+  if (!links.length && debug) {
+    const allLinks = getFreeDiceLinks(html, null, { debug });
+    if (allLinks.length) {
+      links = [allLinks[0]];
+      debugFallback = true;
+      console.log(`ℹ️ No newly-available free dice links for ${targetEstDate} — debug mode: posting first link on page instead`);
+    }
+  }
+
   if (!links.length) {
     console.log(`ℹ️ No newly-available free dice links for ${targetEstDate}`);
     return;
@@ -42,24 +56,26 @@ export const postFreeDiceLinksForToday = async (client, opts = {}) => {
   const channel = await client.channels.fetch(channelId);
 
   for (const link of links) {
-    await channel.send({ content: formatFreeDiceLinkContent(link) });
+    await channel.send({ content: formatFreeDiceLinkContent(link, { debugFallback }) });
     console.log(`✅ Posted free dice link: ${link.claimUrl}`);
   }
 };
 
-function formatFreeDiceLinkContent(link) {
+function formatFreeDiceLinkContent(link, opts = {}) {
+  const { debugFallback = false } = opts;
   const label =
     link.rewardName.toLowerCase() === "rolls" ? "🎲 FREE DICE" : `🎁 FREE ${link.rewardName.toUpperCase()}`;
   const validUntil = link.endDate ? formatEstDateTime(link.endDate) : "Unknown";
 
   return [
+    debugFallback ? "-# 🧪 DEBUG FALLBACK: not necessarily today's link, shown so debug mode has something to check." : null,
     `### ${link.quantity} ${label}`,
     `Valid until: ${validUntil}`,
     "",
     link.claimUrl,
     "",
     "-# Free Dice links are from MOGO WIKI which is not affiliated with Scopely. Check the official MONOPOLY GO! 🎁 giveaways channel for links directly from Scopely.",
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 // Formats a Date as "August 3, 2026 11:27 AM" in America/New_York. Uses typed parts

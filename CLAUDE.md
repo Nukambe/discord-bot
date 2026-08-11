@@ -23,7 +23,9 @@ node apps/nukoko/index.js
 
 # familygo Windows .exe build (bundles esbuild -> pkg + Playwright Chromium)
 npm run build:familygo
-# requires: npx playwright install chromium   (once, before first build)
+# requires: npx playwright-core install chromium   (once, before first build)
+# use playwright-core (not the `playwright` package) so the downloaded Chromium
+# revision matches the version actually pinned in package-lock.json
 
 # Twitch overlay (React/Vite), run from apps/twitch/web
 npm run dev      # vite dev server
