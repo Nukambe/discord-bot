@@ -31,7 +31,7 @@ const EMOJI_MAP = [
   { re: /\bjackpot\s*stash\b/i, emoji: "<:JackpotStash_FreeParking_Minigam:1437570232393793726>" },
   { re: /\badventures?\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
   { re: /\bpartner\s*event\b/i, emoji: "<:partners:1531685860410527954>" },
-  { re: /\bdig\s*minigame\b/i, emoji: "<:Dig_Tool:1437570228421791855>" },
+  { re: /\bdig\s*minigame\b/i, emoji: "<:dig_pickaxe:1538289771686928465>" },
   { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks_boutique:1529168959092424901>" },
   { re: /\bjuggle\s*jam\b/i, emoji: "<:carnival_games:1537956721065197618>" },
 ];

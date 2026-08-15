@@ -30,7 +30,7 @@ export default {
     const decision = decisions[Math.floor(Math.random() * decisions.length)];
 
     // Only pick multiplier if yes
-    let reply = `🎰 **Monopoly GO High Roller Oracle**\n\n${decision}`;
+    let reply = `<:HighRoller:1437570229390545008> **Monopoly GO High Roller Oracle**\n\n${decision}`;
 
     const multipliers = isYes ? ["x1000", "x500", "x200"] : ["x100", "x50", "x20", "x10", "x5", "x2", "x1"];
     const multiplier = multipliers[Math.floor(Math.random() * multipliers.length)];

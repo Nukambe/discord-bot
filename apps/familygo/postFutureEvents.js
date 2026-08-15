@@ -18,7 +18,7 @@ const MAX_EXTRA_IMAGE_EMBEDS = 9;
 const CATEGORY_ROUTES = {
   "dig-minigame": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner: "<:Dig_Tool:1437570228421791855> UPCOMING DIG TREASURES <:Dig_Tool:1437570228421791855>",
+    banner: "<:dig_pickaxe:1538289771686928465> UPCOMING DIG TREASURES <:dig_pickaxe:1538289771686928465>",
   },
   "prize-drop": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,

@@ -71,7 +71,7 @@ export async function postInstrctions(client) {
         msg.author.id === client.user.id &&
         msg.embeds.length > 0 &&
         msg.embeds[0].title ===
-          "<:fortuneFlip:1441956260797747261> Bot Command Guide"
+        "🤖 Bot Command Guide"
     );
 
     if (previousInstructions) {
@@ -111,7 +111,7 @@ export async function postInstrctions(client) {
 
   const embed = new EmbedBuilder()
     .setColor(0xf5a623)
-    .setTitle("<:fortuneFlip:1441956260797747261> Bot Command Guide")
+    .setTitle("🤖 Bot Command Guide")
     .setDescription(description);
 
   await channel.send({ embeds: [embed] });
