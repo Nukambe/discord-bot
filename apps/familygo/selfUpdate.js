@@ -11,12 +11,10 @@ import os from 'node:os';
 import path from 'node:path';
 
 const REPO = process.env.UPDATER_GITHUB_REPO || 'Nukambe/discord-bot';
-const TOKEN = process.env.UPDATER_GITHUB_TOKEN;
 
 const githubRequest = async (url, accept) => {
     const res = await fetch(url, {
         headers: {
-            Authorization: `Bearer ${TOKEN}`,
             Accept: accept,
             'X-GitHub-Api-Version': '2022-11-28',
             'User-Agent': 'familygo-self-update',
@@ -34,7 +32,7 @@ const githubRequest = async (url, accept) => {
  *   starting the bot. false if it's safe to continue starting normally.
  */
 export async function checkForUpdatesAndMaybeRestart() {
-    if (!process.pkg || !TOKEN) return false;
+    if (!process.pkg) return false;
 
     const appDir = path.dirname(process.execPath);
     const exeName = path.basename(process.execPath);

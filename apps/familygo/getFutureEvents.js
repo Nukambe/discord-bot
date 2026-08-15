@@ -13,7 +13,7 @@ const BASE_URL = "https://monopolygo.wiki";
  * @returns {Promise<string|null>} Rendered HTML of the news index page, or null on failure.
  */
 export async function getMogoWikiNews(opts = {}) {
-  const { debug = false, outPath = "./monopolygo-news.html" } = opts;
+  const { debug = false, outPath = "./debug/monopolygo-news.html" } = opts;
 
   console.log("fetching news for:", MOGO_WIKI_NEWS_URL);
   try {
@@ -35,8 +35,9 @@ export async function getMogoWikiNews(opts = {}) {
 
 /**
  * Parse the news index HTML into post cards published on `targetEstDate`
- * (America/New_York, "YYYY-MM-DD"), excluding "Today's Events" daily posts —
- * those are handled by the separate daily-events cron/command.
+ * (America/New_York, "YYYY-MM-DD"), excluding "Today's Events" daily posts and the
+ * "Free Dice Links Today" post — both are handled by the separate daily-post flow
+ * (see postEventToDiscord / postFreeDiceLinksForToday in index.js).
  *
  * Each card is a `<h2><a href="...">Title</a></h2>` with a sibling `<time datetime="...">`.
  *
@@ -55,7 +56,7 @@ export function getFutureEventPosts(html, targetEstDate, opts = {}) {
   $("h2 a[href]").each((_, el) => {
     const $a = $(el);
     const href = $a.attr("href")?.trim();
-    if (!href || href.startsWith("/todays-events-")) return;
+    if (!href || href.startsWith("/todays-events-") || href === "/latest-reward-links") return;
 
     const timeEl = $a.closest("h2").parent().find("time").first();
     const datetime = timeEl.attr("datetime");

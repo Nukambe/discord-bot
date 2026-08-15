@@ -9,11 +9,11 @@ const MOGO_WIKI_EVENTS_URL = "https://monopolygo.wiki/tag/events/";
  *
  * @param {{ debug?: boolean, outPath?: string }} [opts]
  *  - debug: when true, prints extra logs and writes the HTML to a file.
- *  - outPath: custom output path (default: "./monopolygo-events.html") used only if debug is true.
+ *  - outPath: custom output path (default: "./debug/monopolygo-events.html") used only if debug is true.
  * @returns {Promise<string|null>} Rendered HTML of the events index page, or null on failure.
  */
 export async function getMogoWikiEvents(opts = {}) {
-  const { debug = false, outPath = "./monopolygo-events.html" } = opts;
+  const { debug = false, outPath = "./debug/monopolygo-events.html" } = opts;
 
   console.log("fetching events for:", MOGO_WIKI_EVENTS_URL);
   try {
@@ -96,11 +96,11 @@ export function getEventUrlFromHtml(html, dateSlug, opts = {}) {
  *   (e.g. "https://monopolygo.wiki/todays-events-nov-11-2025-battleship/").
  * @param {{ debug?: boolean, outPath?: string }} [opts]
  *  - debug: when true, prints extra logs and writes the HTML to a file.
- *  - outPath: custom output path (default: "./monopolygo-event.html") used only if debug is true.
+ *  - outPath: custom output path (default: "./debug/monopolygo-event.html") used only if debug is true.
  * @returns {Promise<string|null>} Rendered HTML of the event page, or null on failure.
  */
 export async function getMogoEventPage(eventUrl, opts = {}) {
-  const { debug = false, outPath = "./monopolygo-event.html" } = opts;
+  const { debug = false, outPath = "./debug/monopolygo-event.html" } = opts;
 
   if (!eventUrl) {
     console.error("[getMogoEventPage] Missing event URL.");

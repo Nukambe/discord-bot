@@ -141,3 +141,6 @@ vite.config.ts.timestamp-*
 # twitchext build output and calibration captures
 apps/twitchext/dist/
 apps/twitchext/data/calibration.png
+
+# familygo debug HTML dumps (outputToFile, debug:true commands)
+debug/

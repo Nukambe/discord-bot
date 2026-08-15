@@ -21,18 +21,19 @@ const EMOJI_MAP = [
   { re: /\broll\s*match\b/i, emoji: "<:LuckyRoll:1437570243768881244>" },
   { re: /\blucky\s*chance\b/i, emoji: "<:LuckyChance:1437570240019173516>" },
   { re: /\blandmark\s*rush\b/i, emoji: "<:LandmarkRush:1437570782925684908>" },
-  { re: /\bbattleship\b/i, emoji: "<:Battleship_MGW:1437905064260927620>" },
-  { re: /\btournament\b/i, emoji: "<:tycoon_class:1533835656315539637>" },
-  { re: /\bcarnivalgames\b/i, emoji: "<:carnivalgames:1437914039203270810>" },
+  { re: /\bbattleship\b/i, emoji: "<:carnival_games:1537956721065197618>" },
+  { re: /\btycoon\s*class\b/i, emoji: "<:tycoon_class:1533835656315539637>" },
+  { re: /\bcarnivalgames\b/i, emoji: "<:carnival_games:1537956721065197618>" },
   { re: /\btycoon\s*racers\b/i, emoji: "<:RaceCup_Currency_Icon:1441936191870992454>" },
-  { re: /\bfortune\s*teller\b/i, emoji: "<:FortuneTeller:1441933906096947300>" },
+  { re: /\bfortune\s*teller\b/i, emoji: "<:carnival_games:1537956721065197618>" },
   { re: /\btrade\s*fest\b/i, emoji: "<:TradeFest_PillIcon:1441936194379190422>" },
-  { re: /\bprize\s*drop\b/i, emoji: "<:image0:1441934101819949108>" },
+  { re: /\bprize\s*drop\b/i, emoji: "<:prize_drop:1531717495533076560>" },
   { re: /\bjackpot\s*stash\b/i, emoji: "<:JackpotStash_FreeParking_Minigam:1437570232393793726>" },
-  { re: /\badventure\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
+  { re: /\badventures?\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
   { re: /\bpartner\s*event\b/i, emoji: "<:partners:1531685860410527954>" },
   { re: /\bdig\s*minigame\b/i, emoji: "<:Dig_Tool:1437570228421791855>" },
-  { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks:1489776289123536917>" },
+  { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks_boutique:1529168959092424901>" },
+  { re: /\bjuggle\s*jam\b/i, emoji: "<:carnival_games:1537956721065197618>" },
 ];
 
 export function formatMogoDiscordMessage(payload, source) {
@@ -146,7 +147,9 @@ function buildTournamentsField(bullets, pageDateStr) {
   const body = bullets
     .map(b => {
       const { name, start, end, durationHMS } = parseBullet(b, pageDateStr);
-      const emoji = pickEmoji("tournament");
+      const emoji = /\btycoon\s*class\b/i.test(name)
+        ? "<:tycoon_class:1533835656315539637>"
+        : "<:main_event:1537078329939599390>";
 
       const lines = [
         `${emoji} **${name}**`,
