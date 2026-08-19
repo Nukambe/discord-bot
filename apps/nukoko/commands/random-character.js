@@ -5,9 +5,9 @@ import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
 const CHARACTERS = {
   PG: ["Yukio Kasamatsu", "Kazunari Takao", "Shoichi Imayoshi", "Koki Furihata", "Seijuro Akashi", "Shun Izuki", "Nash Gold Jr.", "SP Akashi"],
   SG: ["Junpei Hyuga", "Ryo Sakurai", "Yoshitaka Moriyama", "Tatsuya Himuro", "Reo Mibuchi", "Shintaro Midorima", "Diviner Midorima"],
-  SF: ["Shinji Koganei", "Ryota Kise", "Liu Wei", "Perfect Copy Kise"],
-  PF: ["Taiga Kagami", "LAST GAME Kagami", "Mitsuhiro Hayakawa", "Satoshi Tsuchida", "Daiki Aomine", "Chihiro Mayuzumi"],
-  C: ["Rinnosuke Mitobe", "Taisuke Otsubo", "Atsushi Murasakibara", "Kosuke Wakamatsu", "Koji Kobori", "Teppei Kiyoshi", "Jason Silver"],
+  SF: ["Shinji Koganei", "Ryota Kise", "Liu Wei", "Perfect Copy Kise", "Haizaki Shogo", "Kotaro Hayama"],
+  PF: ["Taiga Kagami", "LAST GAME Kagami", "Mitsuhiro Hayakawa", "Satoshi Tsuchida", "Daiki Aomine", "ZONE Daiki Aomine", "Chihiro Mayuzumi", "ZONE Taiga Kagami"],
+  C: ["Rinnosuke Mitobe", "Taisuke Otsubo", "Atsushi Murasakibara", "Kosuke Wakamatsu", "Koji Kobori", "Teppei Kiyoshi", "Jason Silver", "ZONE Atsushi Murasakibara"],
   // Kuroko's in-game position tag is "?" (Phantom Sixth Man, doesn't fit the standard 5 positions)
   "?": ["Tetsuya Kuroko", "Miracle Tetsuya"],
 };
