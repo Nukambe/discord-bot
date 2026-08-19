@@ -4,10 +4,15 @@ const CHANNELS = ['nukambe', 'bodhifide', 'valioa', 'woosah2sickwitit'];
 const NOTIFY_CHANNEL_ID = '1468093888643203243';
 const STATE_CHANNEL_ID = '1493671213736919280';
 const POLL_INTERVAL_MS = 60_000;
+const LIVE_COLOR = 0x9146ff; // Twitch purple
+const ENDED_COLOR = 0x4f545c; // grey
 
-// login -> Discord message ID in state channel
+// login -> { stateMsgId, notifyMsgId, peak, stream }
 const liveState = new Map();
 let stateLoaded = false;
+
+// login -> profile_image_url (fetched once at startup)
+const avatars = new Map();
 
 // --- Twitch API ---
 
@@ -32,7 +37,66 @@ async function fetchLiveStreams(logins, accessToken, clientId) {
     headers: { Authorization: `Bearer ${accessToken}`, 'Client-Id': clientId },
   });
   const data = await res.body.json();
-  return data.data ?? []; // [{ user_login, user_name, ... }]
+  return data.data ?? []; // [{ user_login, user_name, title, game_name, viewer_count, thumbnail_url, started_at, ... }]
+}
+
+async function fetchUserAvatars(logins, accessToken, clientId) {
+  const params = logins.map(l => `login=${encodeURIComponent(l)}`).join('&');
+  const res = await request(`https://api.twitch.tv/helix/users?${params}`, {
+    headers: { Authorization: `Bearer ${accessToken}`, 'Client-Id': clientId },
+  });
+  const data = await res.body.json();
+  for (const user of data.data ?? []) avatars.set(user.login, user.profile_image_url);
+}
+
+// --- Embeds ---
+
+function buildLiveEmbed(stream) {
+  const startedAtSec = Math.floor(new Date(stream.started_at).getTime() / 1000);
+  const thumb = stream.thumbnail_url.replace('{width}', '440').replace('{height}', '248');
+  return {
+    color: LIVE_COLOR,
+    author: {
+      name: `${stream.user_name} is live!`,
+      url: `https://twitch.tv/${stream.user_login}`,
+      icon_url: avatars.get(stream.user_login),
+    },
+    title: stream.title || 'Untitled stream',
+    url: `https://twitch.tv/${stream.user_login}`,
+    fields: [
+      { name: 'Category', value: stream.game_name || '—', inline: true },
+      { name: 'Viewers', value: String(stream.viewer_count), inline: true },
+      { name: 'Live', value: `<t:${startedAtSec}:R>`, inline: true },
+    ],
+    // Cache-buster: Discord caches embed images by URL, so the preview would never refresh
+    image: { url: `${thumb}?t=${Date.now()}` },
+  };
+}
+
+function formatDuration(ms) {
+  const mins = Math.max(1, Math.round(ms / 60_000));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return h ? `${h}h ${m}m` : `${m}m`;
+}
+
+function buildEndedEmbed(login, entry, notifyMsg) {
+  const stream = entry.stream;
+  const name = stream?.user_name ?? login;
+  const startedMs = stream ? new Date(stream.started_at).getTime() : notifyMsg.createdTimestamp;
+  const fields = [{ name: 'Streamed for', value: formatDuration(Date.now() - startedMs), inline: true }];
+  if (entry.peak) fields.push({ name: 'Peak viewers', value: String(entry.peak), inline: true });
+  return {
+    color: ENDED_COLOR,
+    author: {
+      name: `${name} was live`,
+      url: `https://twitch.tv/${login}`,
+      icon_url: avatars.get(login),
+    },
+    title: stream?.title || 'Stream ended',
+    url: `https://twitch.tv/${login}`,
+    fields,
+  };
 }
 
 // --- State channel ---
@@ -45,26 +109,57 @@ async function loadState(discordClient) {
   const messages = await ch.messages.fetch({ limit: 100 }).catch(() => null);
   if (!messages) return;
   for (const [msgId, msg] of messages) {
-    const login = msg.content.trim().toLowerCase();
-    if (CHANNELS.includes(login)) liveState.set(login, msgId);
+    // "login notifyMsgId" (older messages may be just "login")
+    const [login, notifyMsgId] = msg.content.trim().split(/\s+/);
+    const key = login?.toLowerCase();
+    if (CHANNELS.includes(key)) liveState.set(key, { stateMsgId: msgId, notifyMsgId, peak: 0 });
   }
   console.log(`Stream state loaded: ${[...liveState.keys()].join(', ') || 'none live'}`);
 }
 
-async function markLive(discordClient, login) {
-  if (liveState.has(login)) return false;
-  const ch = await fetchChannel(discordClient, STATE_CHANNEL_ID);
-  const msg = await ch?.send(login).catch(() => null);
-  if (msg) liveState.set(login, msg.id);
-  return true;
+async function markLive(discordClient, stream) {
+  const login = stream.user_login;
+  const notifyCh = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
+  const notifyMsg = await notifyCh?.send({
+    content: `**${stream.user_name}** is live on Twitch! https://twitch.tv/${login}`,
+    embeds: [buildLiveEmbed(stream)],
+  }).catch(() => null);
+  const stateCh = await fetchChannel(discordClient, STATE_CHANNEL_ID);
+  const stateMsg = await stateCh?.send(`${login} ${notifyMsg?.id ?? ''}`.trim()).catch(() => null);
+  liveState.set(login, {
+    stateMsgId: stateMsg?.id,
+    notifyMsgId: notifyMsg?.id,
+    peak: stream.viewer_count,
+    stream,
+  });
+}
+
+async function updateLive(discordClient, stream) {
+  const entry = liveState.get(stream.user_login);
+  if (!entry) return;
+  entry.peak = Math.max(entry.peak ?? 0, stream.viewer_count);
+  entry.stream = stream;
+  if (!entry.notifyMsgId) return;
+  const ch = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
+  const msg = await ch?.messages.fetch(entry.notifyMsgId).catch(() => null);
+  await msg?.edit({ embeds: [buildLiveEmbed(stream)] }).catch(() => null);
 }
 
 async function markOffline(discordClient, login) {
-  const msgId = liveState.get(login);
-  if (!msgId) return;
+  const entry = liveState.get(login);
+  if (!entry) return;
   liveState.delete(login);
-  const ch = await fetchChannel(discordClient, STATE_CHANNEL_ID);
-  await ch?.messages.delete(msgId).catch(() => null);
+  const stateCh = await fetchChannel(discordClient, STATE_CHANNEL_ID);
+  if (entry.stateMsgId) await stateCh?.messages.delete(entry.stateMsgId).catch(() => null);
+  if (!entry.notifyMsgId) return;
+  const notifyCh = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
+  const msg = await notifyCh?.messages.fetch(entry.notifyMsgId).catch(() => null);
+  if (!msg) return;
+  const name = entry.stream?.user_name ?? login;
+  await msg.edit({
+    content: `**${name}** was live on Twitch. https://twitch.tv/${login}`,
+    embeds: [buildEndedEmbed(login, entry, msg)],
+  }).catch(() => null);
 }
 
 async function fetchChannel(discordClient, id) {
@@ -78,13 +173,10 @@ async function poll(discordClient, accessToken, clientId) {
   const streams = await fetchLiveStreams(CHANNELS, accessToken, clientId);
   const nowLive = new Set(streams.map(s => s.user_login));
 
-  // went live
+  // went live / still live
   for (const stream of streams) {
-    const isNew = await markLive(discordClient, stream.user_login);
-    if (isNew) {
-      const ch = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
-      ch?.send(`**${stream.user_name}** is live on Twitch! https://twitch.tv/${stream.user_login}`);
-    }
+    if (liveState.has(stream.user_login)) await updateLive(discordClient, stream);
+    else await markLive(discordClient, stream);
   }
 
   // went offline
@@ -109,6 +201,7 @@ export async function startStreamNotifier(discordClient) {
   }
 
   await refreshToken();
+  await fetchUserAvatars(CHANNELS, accessToken, clientId).catch(console.error);
   await loadState(discordClient);
 
   // Run immediately, then on interval
