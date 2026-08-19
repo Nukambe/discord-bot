@@ -4,12 +4,22 @@ const CHANNELS = ['nukambe', 'bodhifide', 'valioa', 'woosah2sickwitit'];
 const NOTIFY_CHANNEL_ID = '1468093888643203243';
 const STATE_CHANNEL_ID = '1493671213736919280';
 const POLL_INTERVAL_MS = 60_000;
+// Helix /streams intermittently returns nothing for a stream that is still up
+// (ad breaks, transcode hiccups). Require several consecutive misses before
+// declaring the stream over, otherwise the notify message gets torn down and
+// reposted as a brand new one a minute later.
+const OFFLINE_GRACE_POLLS = 3;
+// Twitch only regenerates the preview JPEG every ~5min, and changing the image
+// URL forces Discord to re-proxy it — which visibly blanks and repaints the
+// embed. Bucket the cache-buster so the URL is stable between regenerations.
+const THUMB_REFRESH_MS = 5 * 60_000;
 const LIVE_COLOR = 0x9146ff; // Twitch purple
 const ENDED_COLOR = 0x4f545c; // grey
 
-// login -> { stateMsgId, notifyMsgId, peak, stream }
+// login -> { stateMsgId, notifyMsgId, peak, stream, misses, thumbBucket }
 const liveState = new Map();
 let stateLoaded = false;
+let polling = false;
 
 // login -> profile_image_url (fetched once at startup)
 const avatars = new Map();
@@ -51,6 +61,10 @@ async function fetchUserAvatars(logins, accessToken, clientId) {
 
 // --- Embeds ---
 
+function thumbBucket() {
+  return Math.floor(Date.now() / THUMB_REFRESH_MS);
+}
+
 function buildLiveEmbed(stream) {
   const startedAtSec = Math.floor(new Date(stream.started_at).getTime() / 1000);
   const thumb = stream.thumbnail_url.replace('{width}', '440').replace('{height}', '248');
@@ -69,7 +83,7 @@ function buildLiveEmbed(stream) {
       { name: 'Live', value: `<t:${startedAtSec}:R>`, inline: true },
     ],
     // Cache-buster: Discord caches embed images by URL, so the preview would never refresh
-    image: { url: `${thumb}?t=${Date.now()}` },
+    image: { url: `${thumb}?t=${thumbBucket()}` },
   };
 }
 
@@ -138,8 +152,21 @@ async function updateLive(discordClient, stream) {
   const entry = liveState.get(stream.user_login);
   if (!entry) return;
   entry.peak = Math.max(entry.peak ?? 0, stream.viewer_count);
+  const prev = entry.stream;
   entry.stream = stream;
   if (!entry.notifyMsgId) return;
+
+  // Don't edit unless something visible actually changed — a no-op edit still
+  // makes every client repaint the embed.
+  const bucket = thumbBucket();
+  const unchanged = prev
+    && prev.title === stream.title
+    && prev.game_name === stream.game_name
+    && prev.viewer_count === stream.viewer_count
+    && entry.thumbBucket === bucket;
+  if (unchanged) return;
+  entry.thumbBucket = bucket;
+
   const ch = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
   const msg = await ch?.messages.fetch(entry.notifyMsgId).catch(() => null);
   await msg?.edit({ embeds: [buildLiveEmbed(stream)] }).catch(() => null);
@@ -170,18 +197,31 @@ async function fetchChannel(discordClient, id) {
 // --- Poll ---
 
 async function poll(discordClient, accessToken, clientId) {
-  const streams = await fetchLiveStreams(CHANNELS, accessToken, clientId);
-  const nowLive = new Set(streams.map(s => s.user_login));
+  // A slow poll must not overlap the next one: markLive only records the entry
+  // after its awaits, so two in-flight polls would both post a go-live message.
+  if (polling) return;
+  polling = true;
+  try {
+    const streams = await fetchLiveStreams(CHANNELS, accessToken, clientId);
+    const nowLive = new Set(streams.map(s => s.user_login));
 
-  // went live / still live
-  for (const stream of streams) {
-    if (liveState.has(stream.user_login)) await updateLive(discordClient, stream);
-    else await markLive(discordClient, stream);
-  }
+    // went live / still live
+    for (const stream of streams) {
+      if (liveState.has(stream.user_login)) await updateLive(discordClient, stream);
+      else await markLive(discordClient, stream);
+    }
 
-  // went offline
-  for (const login of [...liveState.keys()]) {
-    if (!nowLive.has(login)) await markOffline(discordClient, login);
+    // went offline (only after OFFLINE_GRACE_POLLS consecutive misses)
+    for (const [login, entry] of [...liveState]) {
+      if (nowLive.has(login)) {
+        entry.misses = 0;
+        continue;
+      }
+      entry.misses = (entry.misses ?? 0) + 1;
+      if (entry.misses >= OFFLINE_GRACE_POLLS) await markOffline(discordClient, login);
+    }
+  } finally {
+    polling = false;
   }
 }
 
