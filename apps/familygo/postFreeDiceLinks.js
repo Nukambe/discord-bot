@@ -1,6 +1,7 @@
 import { getMogoEventPage } from "./getEvents.js";
 import { getFreeDiceLinks } from "./getFreeDiceLinks.js";
-import { toEstDateString } from "../../util/dateUtils.js";
+import { toEstDateString, getYesterdayEstDateString } from "../../util/dateUtils.js";
+import { fetchPostedHaystack, haystackHasUrl } from "./alreadyPosted.js";
 
 const FREE_DICE_LINKS_URL = "https://monopolygo.wiki/latest-reward-links";
 
@@ -9,21 +10,36 @@ const FREE_DICE_LINKS_CHANNEL_ID = "1390326248055767184";
 
 /**
  * Fetch the Monopoly GO Wiki's "Free Dice Links Today" page and post one Discord message
- * per reward link that first became available today (America/New_York) — links that were
- * already available on a previous day were already posted then, so re-posting them here
- * would duplicate them. Runs as part of the daily-post flow (see postEventToDiscord in
- * index.js), so it fires once per day alongside the daily events post.
+ * per reward link that became available today or yesterday (America/New_York) and isn't
+ * already in the channel.
+ *
+ * The two-day window plus the already-posted check replaced a today-only filter, which
+ * dropped links outright at the calendar boundary. This used to run only as a step of the
+ * daily events post, and the daily post regularly lands *after* midnight (it retries into
+ * the early morning until the wiki publishes the next day's page). When it did, "today"
+ * had already rolled over, so every link from the day just ended was skipped — and the next
+ * run, filtering on its own date, never looked back at them. Scanning yesterday as well
+ * closes that gap: consecutive runs now overlap by a day no matter which side of midnight
+ * each one lands on, and deduping on the claim URL is what keeps that overlap from
+ * re-posting anything.
+ *
+ * Called from two places for that reason — the nightly cron (startFreeDiceCron in index.js),
+ * whose window covers the day that just ended, and the daily events post, which picks up
+ * that day's links earlier when it can.
  *
  * @param {import('discord.js').Client} client - A logged-in Discord client.
  * @param {{ debug?: boolean }} [opts]
- *  - debug: post to process.env.TEST_CHANNEL_ID instead of the hardcoded live channel,
- *    and turn on fetch-layer debug output (verbose logs + HTML dumps to disk).
+ *  - debug: post to process.env.TEST_CHANNEL_ID instead of the hardcoded live channel, turn
+ *    on fetch-layer debug output (verbose logs + HTML dumps to disk), and bypass the
+ *    already-posted check so a manual run always produces a message to eyeball.
  */
-export const postFreeDiceLinksForToday = async (client, opts = {}) => {
+export const postNewFreeDiceLinks = async (client, opts = {}) => {
   const { debug = false } = opts;
-  const targetEstDate = toEstDateString(new Date());
+  const targetEstDates = [toEstDateString(new Date()), getYesterdayEstDateString()];
 
-  console.log(`🎲 Checking free dice links for ${targetEstDate}${debug ? " (debug → test channel)" : ""}`);
+  console.log(
+    `🎲 Checking free dice links for ${targetEstDates.join(" / ")}${debug ? " (debug → test channel)" : ""}`
+  );
 
   const html = await getMogoEventPage(FREE_DICE_LINKS_URL, { debug });
   if (!html) {
@@ -31,7 +47,7 @@ export const postFreeDiceLinksForToday = async (client, opts = {}) => {
     return;
   }
 
-  let links = getFreeDiceLinks(html, targetEstDate, { debug });
+  let links = getFreeDiceLinks(html, targetEstDates, { debug });
   let debugFallback = false;
 
   // Debug mode is used to visually check formatting/posting, which needs an actual
@@ -42,20 +58,28 @@ export const postFreeDiceLinksForToday = async (client, opts = {}) => {
     if (allLinks.length) {
       links = [allLinks[0]];
       debugFallback = true;
-      console.log(`ℹ️ No newly-available free dice links for ${targetEstDate} — debug mode: posting first link on page instead`);
+      console.log(`ℹ️ No new free dice links in window — debug mode: posting first link on page instead`);
     }
   }
 
   if (!links.length) {
-    console.log(`ℹ️ No newly-available free dice links for ${targetEstDate}`);
+    console.log(`ℹ️ No free dice links available for ${targetEstDates.join(" / ")}`);
     return;
   }
 
   const channelId = debug ? process.env.TEST_CHANNEL_ID : FREE_DICE_LINKS_CHANNEL_ID;
-  if (!channelId) throw new Error("[postFreeDiceLinksForToday] Missing target channel ID");
+  if (!channelId) throw new Error("[postNewFreeDiceLinks] Missing target channel ID");
   const channel = await client.channels.fetch(channelId);
 
-  for (const link of links) {
+  const posted = debug ? "" : await fetchPostedHaystack(client, [channelId]);
+  const fresh = links.filter((link) => !haystackHasUrl(posted, link.claimUrl));
+
+  if (!fresh.length) {
+    console.log(`ℹ️ All ${links.length} free dice link(s) in window were already posted`);
+    return;
+  }
+
+  for (const link of fresh) {
     await channel.send({ content: formatFreeDiceLinkContent(link, { debugFallback }) });
     console.log(`✅ Posted free dice link: ${link.claimUrl}`);
   }

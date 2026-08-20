@@ -4,11 +4,17 @@ import { toEstDateString } from "../../util/dateUtils.js";
 /**
  * Parse the "Free Dice Links Today" (/latest-reward-links) page into individual
  * reward-link entries, keeping only the ones that first became available on
- * `targetEstDate` (America/New_York, "YYYY-MM-DD") — links that were already
- * available on a previous day were already posted then, so re-including them
- * here would duplicate them.
+ * `targetEstDates` (America/New_York, "YYYY-MM-DD") — the page also carries
+ * long-running links (partner rewards that stay up for months) which would
+ * otherwise be re-posted every run.
  *
- * Passing a falsy `targetEstDate` skips the date filter entirely, returning every
+ * Accepts several dates because the caller scans a rolling window rather than a
+ * single day: a link that appears late in the evening must still be found on the
+ * next run even though the calendar date has since rolled over. Deduping against
+ * what's already in the channel (see alreadyPosted.js) is what keeps the overlap
+ * between windows from producing repeats.
+ *
+ * Passing a falsy `targetEstDates` skips the date filter entirely, returning every
  * card on the page — used in debug mode to get a link to post even when nothing
  * newly became available today.
  *
@@ -21,13 +27,18 @@ import { toEstDateString } from "../../util/dateUtils.js";
  *   </article>
  *
  * @param {string} html - Raw HTML of the /latest-reward-links page.
- * @param {string} [targetEstDate] - e.g. "2026-08-01"; omit/falsy to skip the date filter.
+ * @param {string|string[]} [targetEstDates] - e.g. "2026-08-01" or ["2026-08-01", "2026-07-31"];
+ *   omit/falsy to skip the date filter.
  * @param {{ debug?: boolean }} [opts]
  * @returns {Array<{ quantity: string, rewardName: string, startDate: Date, endDate: Date|null, claimUrl: string }>}
  */
-export function getFreeDiceLinks(html, targetEstDate, opts = {}) {
+export function getFreeDiceLinks(html, targetEstDates, opts = {}) {
   const { debug = false } = opts;
   if (!html) return [];
+
+  const wanted = targetEstDates
+    ? new Set(Array.isArray(targetEstDates) ? targetEstDates : [targetEstDates])
+    : null;
 
   const $ = cheerio.load(html);
   const links = [];
@@ -50,14 +61,14 @@ export function getFreeDiceLinks(html, targetEstDate, opts = {}) {
     if (Number.isNaN(startDate.getTime())) return;
     const endDate = endAttr ? new Date(endAttr) : null;
 
-    if (targetEstDate && toEstDateString(startDate) !== targetEstDate) return;
+    if (wanted && !wanted.has(toEstDateString(startDate))) return;
 
     links.push({ quantity, rewardName, startDate, endDate, claimUrl });
   });
 
   if (debug) {
     console.log(
-      `[getFreeDiceLinks] target=${targetEstDate} found=${links.length}:`,
+      `[getFreeDiceLinks] target=${wanted ? [...wanted].join(",") : "any"} found=${links.length}:`,
       links.map((l) => l.claimUrl)
     );
   }

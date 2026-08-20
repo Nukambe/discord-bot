@@ -34,21 +34,29 @@ export async function getMogoWikiNews(opts = {}) {
 }
 
 /**
- * Parse the news index HTML into post cards published on `targetEstDate`
+ * Parse the news index HTML into post cards published on `targetEstDates`
  * (America/New_York, "YYYY-MM-DD"), excluding "Today's Events" daily posts and the
  * "Free Dice Links Today" post — both are handled by the separate daily-post flow
- * (see postEventToDiscord / postFreeDiceLinksForToday in index.js).
+ * (see postEventToDiscord / postNewFreeDiceLinks in index.js).
  *
  * Each card is a `<h2><a href="...">Title</a></h2>` with a sibling `<time datetime="...">`.
  *
+ * Takes several dates because the caller scans a rolling window on a repeating cron; the
+ * `<time datetime>` values are UTC and the wiki habitually publishes late in the Eastern
+ * evening, so a post's EST publish date is regularly the day before the run that first
+ * sees it. See postFutureEventsToDiscord for why the window is wider than one day.
+ *
  * @param {string} html - The Monopoly GO News page HTML.
- * @param {string} targetEstDate - e.g. "2026-08-01"
+ * @param {string|string[]} targetEstDates - e.g. "2026-08-01" or ["2026-08-01", "2026-07-31"]
  * @param {{ debug?: boolean }} [opts]
  * @returns {Array<{ url: string, title: string, publishDate: Date }>}
  */
-export function getFutureEventPosts(html, targetEstDate, opts = {}) {
+export function getFutureEventPosts(html, targetEstDates, opts = {}) {
   const { debug = false } = opts;
-  if (!html || !targetEstDate) return [];
+  if (!html || !targetEstDates) return [];
+
+  const wanted = new Set(Array.isArray(targetEstDates) ? targetEstDates : [targetEstDates]);
+  if (!wanted.size) return [];
 
   const $ = cheerio.load(html);
   const posts = [];
@@ -65,8 +73,7 @@ export function getFutureEventPosts(html, targetEstDate, opts = {}) {
     const publishDate = new Date(datetime);
     if (Number.isNaN(publishDate.getTime())) return;
 
-    const estDate = toEstDateString(publishDate);
-    if (estDate !== targetEstDate) return;
+    if (!wanted.has(toEstDateString(publishDate))) return;
 
     let url;
     try {
@@ -81,7 +88,7 @@ export function getFutureEventPosts(html, targetEstDate, opts = {}) {
 
   if (debug) {
     console.log(
-      `[getFutureEventPosts] target=${targetEstDate} found=${posts.length}:`,
+      `[getFutureEventPosts] target=${[...wanted].join(",")} found=${posts.length}:`,
       posts.map((p) => p.url)
     );
   }

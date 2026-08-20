@@ -6,7 +6,7 @@ import { parseMonopolyEventPage } from "./getEvent.js";
 import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getEvents.js";
 import { postEvent } from "./postEvent.js";
 import { postFutureEventsToDiscord } from "./postFutureEvents.js";
-import { postFreeDiceLinksForToday } from "./postFreeDiceLinks.js";
+import { postNewFreeDiceLinks } from "./postFreeDiceLinks.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -90,10 +90,14 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
         console.error("💥 Failed to post event to Discord:", err);
     }
 
-    // Step 7: Post today's newly-available free dice links (independent of the steps
-    // above, so a failure here doesn't affect the main daily event post).
+    // Step 7: Post any free dice links that haven't gone out yet (independent of the steps
+    // above, so a failure here doesn't affect the main daily event post). The nightly
+    // startFreeDiceCron run is the one that guarantees a day gets swept; this call is the
+    // opportunistic one, catching the day's links at daily-post time instead of leaving
+    // them until after midnight. Both are safe to run because postNewFreeDiceLinks dedupes
+    // against the channel.
     try {
-        await postFreeDiceLinksForToday(client, { debug });
+        await postNewFreeDiceLinks(client, { debug });
     } catch (err) {
         console.error("💥 Failed to post free dice links:", err);
     }
@@ -240,6 +244,7 @@ const parseHHmm = (str, fallbackHour, fallbackMinute) => {
 let dailyPostTask = null;
 let giftRotationTask = null;
 let futureEventsTask = null;
+let freeDiceTask = null;
 
 /**
  * (Re)start the daily-post cron using the given db's schedule.
@@ -347,8 +352,20 @@ const startGiftRotationCron = (client, db) => {
 };
 
 /**
- * Start the fixed-schedule future-events cron: runs once at 12am America/New_York,
- * posting yesterday's Monopoly GO Wiki news posts (excluding daily "Today's Events" posts).
+ * Start the fixed-schedule future-events cron: runs once at 12am America/New_York, sweeping
+ * the Monopoly GO Wiki news index for posts published today or yesterday and excluding the
+ * daily "Today's Events" posts.
+ *
+ * Deliberately once a day, not a repeating sweep: every run opens a visible browser window
+ * (Cloudflare forces headed Chrome — see util/fetchWithPlaywright.js) and the packaged build
+ * runs on an end user's desktop, so run count is a UX budget, not just a load one.
+ *
+ * The cost of that is a real race. The wiki publishes preview articles late in the Eastern
+ * evening — the Roll Treasures guide went up at 23:46 EST — leaving the news index minutes
+ * to list them before the single run that will ever look. A post that misses that window, or
+ * a Cloudflare fetch that fails, is skipped permanently, since tomorrow's run asks about a
+ * different day. Shifting this cron an hour or two later is the cheap mitigation: "yesterday"
+ * still covers the whole evening, but the index has had time to settle.
  */
 const startFutureEventsCron = (client) => {
     if (futureEventsTask) futureEventsTask.stop();
@@ -361,6 +378,39 @@ const startFutureEventsCron = (client) => {
                 await postFutureEventsToDiscord(client);
             } catch (err) {
                 console.error("💥 Future events cron failed:", err);
+            }
+        },
+        { timezone: "America/New_York" }
+    );
+};
+
+/**
+ * Start the fixed-schedule free-dice cron: one run just after midnight America/New_York,
+ * which sweeps up the day that just ended.
+ *
+ * postNewFreeDiceLinks also runs as a step of the daily events post, but that post fires at
+ * an hour that drifts (it retries until the wiki publishes the next day's page, sometimes
+ * past midnight), so on its own it leaves a gap: any link that appears after it has run has
+ * to wait for the following day's post, by which point a ~24h link is close to expiring.
+ * A fixed midnight run closes that gap — its today+yesterday window lands squarely on the
+ * previous calendar day, whichever side of midnight the daily post happened to land on.
+ *
+ * Scheduled at 00:05 rather than 00:00 so it doesn't open a browser window at the same
+ * instant as the future-events sweep — each wiki fetch is a visible Chrome window on the
+ * packaged desktop build (Cloudflare rejects headless), so two jobs firing together would
+ * put two of them on the end user's screen at once.
+ */
+const startFreeDiceCron = (client) => {
+    if (freeDiceTask) freeDiceTask.stop();
+
+    freeDiceTask = cron.schedule(
+        "5 0 * * *",
+        async () => {
+            console.log("🎲 Running nightly free-dice link check...");
+            try {
+                await postNewFreeDiceLinks(client);
+            } catch (err) {
+                console.error("💥 Free dice cron failed:", err);
             }
         },
         { timezone: "America/New_York" }
@@ -381,6 +431,7 @@ client.once(Events.ClientReady, async () => {
     startDailyPostCron(client, db);
     startGiftRotationCron(client, db);
     startFutureEventsCron(client);
+    startFreeDiceCron(client);
 
     // Whenever a command updates the db, tear down and rebuild both crons
     // from the new schedule.

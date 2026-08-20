@@ -5,6 +5,11 @@ const EMOJI_MAP = [
   { re: /\bcash\s*boost\b/i, emoji: "<:CashBoost:1437570223816441976>" },
   { re: /\bcash\s*grab\b/i, emoji: "<:CashGrab:1437570224927801488>" },
   { re: /\bgolden\s*blitz\b/i, emoji: "<:GoldenBlitz:1437570226966495373>" },
+  // Dig-minigame family. The daily schedule names this event "Dig Treasures" (the wiki's
+  // preview posts call it "Roll Treasures") — neither matched the older Dig_Tool patterns
+  // below, so it fell through to the "•" fallback bullet. Must stay above the Dig_Tool
+  // entry: pickEmoji takes the first match, not the most specific one.
+  { re: /\bdig\s*minigame\b|\b(?:dig|roll)\s*treasures?\b|\btreasure\s*dig\b/i, emoji: "<:dig_pickaxe:1538289771686928465>" },
   { re: /\bdig(ging)?\s*tool|\btreasure\s*hunt|\bpickaxe/i, emoji: "<:Dig_Tool:1437570228421791855>" },
   { re: /\bhigh\s*roller\b/i, emoji: "<:HighRoller:1437570229390545008>" },
   { re: /\btoken|\bchip\b/i, emoji: "<:Icon_Chip_Small:1437570231131312278>" },
@@ -31,7 +36,6 @@ const EMOJI_MAP = [
   { re: /\bjackpot\s*stash\b/i, emoji: "<:JackpotStash_FreeParking_Minigam:1437570232393793726>" },
   { re: /\badventures?\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
   { re: /\bpartner\s*event\b/i, emoji: "<:partners:1531685860410527954>" },
-  { re: /\bdig\s*minigame\b/i, emoji: "<:dig_pickaxe:1538289771686928465>" },
   { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks_boutique:1529168959092424901>" },
   { re: /\bjuggle\s*jam\b/i, emoji: "<:carnival_games:1537956721065197618>" },
 ];

@@ -1,7 +1,8 @@
 import { getMogoWikiNews, getFutureEventPosts } from "./getFutureEvents.js";
 import { getMogoEventPage } from "./getEvents.js";
 import { parseFutureEventPost } from "./parseFutureEventPost.js";
-import { getYesterdayEstDateString } from "../../util/dateUtils.js";
+import { toEstDateString, getYesterdayEstDateString } from "../../util/dateUtils.js";
+import { fetchPostedHaystack, haystackHasUrl } from "./alreadyPosted.js";
 
 // Live channels for /future-events posts. Hardcoded (not env-based) per request.
 const FUTURE_EVENTS_CHANNEL_ID = "1393942240300372008";
@@ -46,25 +47,40 @@ const CATEGORY_ROUTES = {
   albums: { channelId: ALBUM_PREVIEWS_CHANNEL_ID, banner: null },
 };
 
+// Every channel a post can land in. The already-posted check runs before a post's tags (and
+// therefore its route) are known, so it has to scan all of them.
+const ALL_TARGET_CHANNEL_IDS = [
+  ...new Set([FUTURE_EVENTS_CHANNEL_ID, ...Object.values(CATEGORY_ROUTES).map((r) => r.channelId)]),
+];
+
 /**
- * Find yesterday's (America/New_York) Monopoly GO Wiki news posts — excluding the daily
- * "Today's Events" posts, which are handled by the separate daily-events cron/command, and
- * the "Free Dice Links Today" post, which is handled by postFreeDiceLinksForToday as part
- * of the daily-post flow — and post one Discord message per post. Each post routes to a
+ * Find today's and yesterday's (America/New_York) Monopoly GO Wiki news posts — excluding
+ * the daily "Today's Events" posts, which are handled by the separate daily-events
+ * cron/command, and the "Free Dice Links Today" post, which is handled by
+ * postNewFreeDiceLinks — and post one Discord message per post. Each post routes to a
  * channel/banner based on its category tag (see CATEGORY_ROUTES), falling back to
  * FUTURE_EVENTS_CHANNEL_ID.
+ *
+ * The window covers two days rather than just "yesterday" so that the scheduled midnight run
+ * (startFutureEventsCron in index.js) and any manual /future-events run overlap instead of
+ * each carving out a separate day — the wiki publishes preview articles late in the Eastern
+ * evening (the Roll Treasures guide went up at 23:46 EST), which is exactly where a
+ * single-day window has its seam. Deduping on the post URL against what's already in the
+ * target channels is what makes overlapping runs safe.
  *
  * @param {import('discord.js').Client} client - A logged-in Discord client.
  * @param {{ debug?: boolean }} [opts]
  *  - debug: post to process.env.TEST_CHANNEL_ID instead of the hardcoded live channels,
- *    and turn on fetch-layer debug output (verbose logs + HTML dumps to disk).
+ *    turn on fetch-layer debug output (verbose logs + HTML dumps to disk), and bypass the
+ *    already-posted check so a manual run always produces messages to eyeball.
  */
 export const postFutureEventsToDiscord = async (client, opts = {}) => {
   const { debug = false } = opts;
-  const targetEstDate = getYesterdayEstDateString();
+  const targetEstDates = [toEstDateString(new Date()), getYesterdayEstDateString()];
+  const window = targetEstDates.join(" / ");
 
   console.log(
-    `🌀 Starting postFutureEventsToDiscord for ${targetEstDate}${debug ? " (debug → test channel)" : ""}`
+    `🌀 Starting postFutureEventsToDiscord for ${window}${debug ? " (debug → test channel)" : ""}`
   );
 
   const newsHtml = await getMogoWikiNews({ debug });
@@ -73,12 +89,23 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
     return;
   }
 
-  const posts = getFutureEventPosts(newsHtml, targetEstDate, { debug });
-  if (!posts.length) {
-    console.log(`ℹ️ No future-event posts found for ${targetEstDate}`);
+  const found = getFutureEventPosts(newsHtml, targetEstDates, { debug });
+  if (!found.length) {
+    console.log(`ℹ️ No future-event posts found for ${window}`);
     return;
   }
-  console.log(`🔗 Found ${posts.length} post(s) for ${targetEstDate}`);
+
+  // Checked before fetching each post page, so an already-posted article costs one string
+  // lookup instead of a browser launch — the two-day window mostly contains posts that
+  // were already handled by the previous run.
+  const posted = debug ? "" : await fetchPostedHaystack(client, ALL_TARGET_CHANNEL_IDS);
+  const posts = found.filter((post) => !haystackHasUrl(posted, post.url));
+
+  if (!posts.length) {
+    console.log(`ℹ️ All ${found.length} post(s) for ${window} were already posted`);
+    return;
+  }
+  console.log(`🔗 Found ${posts.length} new post(s) for ${window} (${found.length} in window)`);
 
   for (const post of posts) {
     try {
