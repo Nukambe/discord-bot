@@ -26,6 +26,19 @@ const listenForCommands = async (client) => {
   console.log("🧭 Command listener initialized");
 
   client.on(Events.InteractionCreate, async (interaction) => {
+    // Autocomplete arrives as its own interaction type and has a hard 3s
+    // deadline, so it bypasses the cooldown/error-reply path below.
+    if (interaction.isAutocomplete()) {
+      const cmd = client.commands.get(interaction.commandName);
+      if (typeof cmd?.autocomplete !== "function") return;
+      try {
+        await cmd.autocomplete(interaction);
+      } catch (err) {
+        console.error(`💥 Autocomplete failed for /${interaction.commandName}:`, err);
+      }
+      return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const name = interaction.commandName;

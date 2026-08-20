@@ -1,31 +1,5 @@
 import { SlashCommandBuilder, EmbedBuilder } from "discord.js";
-
-// Copied from apps/twitch/commands/character-request.js — the two bots are
-// independent, so this roster is intentionally duplicated rather than shared.
-const CHARACTERS = {
-  PG: ["Yukio Kasamatsu", "Kazunari Takao", "Shoichi Imayoshi", "Koki Furihata", "Seijuro Akashi", "Shun Izuki", "Nash Gold Jr.", "SP Akashi"],
-  SG: ["Junpei Hyuga", "Ryo Sakurai", "Yoshitaka Moriyama", "Tatsuya Himuro", "Reo Mibuchi", "Shintaro Midorima", "Diviner Midorima"],
-  SF: ["Shinji Koganei", "Ryota Kise", "Liu Wei", "Perfect Copy Kise", "Haizaki Shogo", "Kotaro Hayama"],
-  PF: ["Taiga Kagami", "LAST GAME Kagami", "Mitsuhiro Hayakawa", "Satoshi Tsuchida", "Daiki Aomine", "ZONE Daiki Aomine", "Chihiro Mayuzumi", "ZONE Taiga Kagami"],
-  C: ["Rinnosuke Mitobe", "Taisuke Otsubo", "Atsushi Murasakibara", "Kosuke Wakamatsu", "Koji Kobori", "Teppei Kiyoshi", "Jason Silver", "ZONE Atsushi Murasakibara"],
-  // Kuroko's in-game position tag is "?" (Phantom Sixth Man, doesn't fit the standard 5 positions)
-  "?": ["Tetsuya Kuroko", "Miracle Tetsuya"],
-};
-
-const POSITIONS = {
-  PG: "Point Guard",
-  SG: "Shooting Guard",
-  SF: "Small Forward",
-  PF: "Power Forward",
-  C: "Center",
-  "?": "Special",
-};
-
-const POSITION_OF = new Map(
-  Object.entries(CHARACTERS).flatMap(([pos, names]) => names.map((name) => [name, pos]))
-);
-
-const ALL_NAMES = Object.values(CHARACTERS).flat();
+import { CHARACTERS, POSITIONS, POSITION_OF, ALL_NAMES } from "../roster.js";
 
 function pickRandom(arr) {
   return arr[Math.floor(Math.random() * arr.length)];

@@ -6,7 +6,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- `/builds show|add|remove` — user-submitted build screenshots, stored in a
+  dedicated Discord channel (`buildsDb.js`). Images are re-posted by the bot so
+  the record points at a message it owns; the index is a JSON attachment on the
+  channel's last message. Max 10 builds per character, and only the user who
+  added a build can remove it.
+- `roster.js` — the character roster, shared by `random-character` and `builds`.
+- Autocomplete interactions are now dispatched to a command's optional
+  `autocomplete()` export (`index.js`); the roster is larger than the 25-choice
+  cap, so character options can't use `addChoices`.
 
 ## Baseline — 2026-08-08
 
