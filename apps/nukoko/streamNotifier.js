@@ -9,14 +9,10 @@ const POLL_INTERVAL_MS = 60_000;
 // declaring the stream over, otherwise the notify message gets torn down and
 // reposted as a brand new one a minute later.
 const OFFLINE_GRACE_POLLS = 3;
-// Twitch only regenerates the preview JPEG every ~5min, and changing the image
-// URL forces Discord to re-proxy it — which visibly blanks and repaints the
-// embed. Bucket the cache-buster so the URL is stable between regenerations.
-const THUMB_REFRESH_MS = 5 * 60_000;
 const LIVE_COLOR = 0x9146ff; // Twitch purple
 const ENDED_COLOR = 0x4f545c; // grey
 
-// login -> { stateMsgId, notifyMsgId, peak, stream, misses, thumbBucket }
+// login -> { stateMsgId, notifyMsgId, peak, stream, misses }
 const liveState = new Map();
 let stateLoaded = false;
 let polling = false;
@@ -61,13 +57,8 @@ async function fetchUserAvatars(logins, accessToken, clientId) {
 
 // --- Embeds ---
 
-function thumbBucket() {
-  return Math.floor(Date.now() / THUMB_REFRESH_MS);
-}
-
 function buildLiveEmbed(stream) {
   const startedAtSec = Math.floor(new Date(stream.started_at).getTime() / 1000);
-  const thumb = stream.thumbnail_url.replace('{width}', '440').replace('{height}', '248');
   return {
     color: LIVE_COLOR,
     author: {
@@ -82,8 +73,6 @@ function buildLiveEmbed(stream) {
       { name: 'Viewers', value: String(stream.viewer_count), inline: true },
       { name: 'Live', value: `<t:${startedAtSec}:R>`, inline: true },
     ],
-    // Cache-buster: Discord caches embed images by URL, so the preview would never refresh
-    image: { url: `${thumb}?t=${thumbBucket()}` },
   };
 }
 
@@ -158,14 +147,11 @@ async function updateLive(discordClient, stream) {
 
   // Don't edit unless something visible actually changed — a no-op edit still
   // makes every client repaint the embed.
-  const bucket = thumbBucket();
   const unchanged = prev
     && prev.title === stream.title
     && prev.game_name === stream.game_name
-    && prev.viewer_count === stream.viewer_count
-    && entry.thumbBucket === bucket;
+    && prev.viewer_count === stream.viewer_count;
   if (unchanged) return;
-  entry.thumbBucket = bucket;
 
   const ch = await fetchChannel(discordClient, NOTIFY_CHANNEL_ID);
   const msg = await ch?.messages.fetch(entry.notifyMsgId).catch(() => null);
