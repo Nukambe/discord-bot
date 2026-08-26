@@ -14,18 +14,15 @@ const FREE_DICE_LINKS_CHANNEL_ID = "1390326248055767184";
  * already in the channel.
  *
  * The two-day window plus the already-posted check replaced a today-only filter, which
- * dropped links outright at the calendar boundary. This used to run only as a step of the
- * daily events post, and the daily post regularly lands *after* midnight (it retries into
- * the early morning until the wiki publishes the next day's page). When it did, "today"
- * had already rolled over, so every link from the day just ended was skipped — and the next
- * run, filtering on its own date, never looked back at them. Scanning yesterday as well
- * closes that gap: consecutive runs now overlap by a day no matter which side of midnight
- * each one lands on, and deduping on the claim URL is what keeps that overlap from
+ * dropped links outright at the calendar boundary: a run landing just after midnight,
+ * filtering on its own date, never looked back at the day that just ended. Scanning
+ * yesterday as well closes that gap — consecutive runs overlap by a day no matter when
+ * each one lands, and deduping on the claim URL is what keeps that overlap from
  * re-posting anything.
  *
- * Called from two places for that reason — the nightly cron (startFreeDiceCron in index.js),
- * whose window covers the day that just ended, and the daily events post, which picks up
- * that day's links earlier when it can.
+ * Called from the daily 7:30pm cron (startFreeDiceCron in index.js) and the manual
+ * /free-dice command, which exists to catch up on any links a scheduled run missed —
+ * the overlap-plus-dedupe design is what makes re-running it at any time safe.
  *
  * @param {import('discord.js').Client} client - A logged-in Discord client.
  * @param {{ debug?: boolean }} [opts]

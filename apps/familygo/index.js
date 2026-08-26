@@ -90,18 +90,6 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
         console.error("💥 Failed to post event to Discord:", err);
     }
 
-    // Step 7: Post any free dice links that haven't gone out yet (independent of the steps
-    // above, so a failure here doesn't affect the main daily event post). The nightly
-    // startFreeDiceCron run is the one that guarantees a day gets swept; this call is the
-    // opportunistic one, catching the day's links at daily-post time instead of leaving
-    // them until after midnight. Both are safe to run because postNewFreeDiceLinks dedupes
-    // against the channel.
-    try {
-        await postNewFreeDiceLinks(client, { debug });
-    } catch (err) {
-        console.error("💥 Failed to post free dice links:", err);
-    }
-
     console.log("🏁 Finished postEventToDiscord\n");
 };
 
@@ -385,28 +373,25 @@ const startFutureEventsCron = (client) => {
 };
 
 /**
- * Start the fixed-schedule free-dice cron: one run just after midnight America/New_York,
- * which sweeps up the day that just ended.
+ * Start the fixed-schedule free-dice cron: one run daily at 7:30pm America/New_York,
+ * fully independent of the daily events post (which no longer piggybacks a free-dice
+ * check — this cron and the manual /free-dice command are the only callers).
  *
- * postNewFreeDiceLinks also runs as a step of the daily events post, but that post fires at
- * an hour that drifts (it retries until the wiki publishes the next day's page, sometimes
- * past midnight), so on its own it leaves a gap: any link that appears after it has run has
- * to wait for the following day's post, by which point a ~24h link is close to expiring.
- * A fixed midnight run closes that gap — its today+yesterday window lands squarely on the
- * previous calendar day, whichever side of midnight the daily post happened to land on.
+ * The today+yesterday window inside postNewFreeDiceLinks means a link published after
+ * 7:30pm is still caught by the next evening's run, and deduping against the channel
+ * makes the overlapping windows (and any manual /free-dice run in between) safe.
  *
- * Scheduled at 00:05 rather than 00:00 so it doesn't open a browser window at the same
- * instant as the future-events sweep — each wiki fetch is a visible Chrome window on the
- * packaged desktop build (Cloudflare rejects headless), so two jobs firing together would
- * put two of them on the end user's screen at once.
+ * Note this can coincide with the daily-post window opening (default 19:30) — each wiki
+ * fetch is a visible Chrome window on the packaged desktop build (Cloudflare rejects
+ * headless), so two windows may briefly appear together at 7:30pm.
  */
 const startFreeDiceCron = (client) => {
     if (freeDiceTask) freeDiceTask.stop();
 
     freeDiceTask = cron.schedule(
-        "5 0 * * *",
+        "30 19 * * *",
         async () => {
-            console.log("🎲 Running nightly free-dice link check...");
+            console.log("🎲 Running daily 7:30pm free-dice link check...");
             try {
                 await postNewFreeDiceLinks(client);
             } catch (err) {

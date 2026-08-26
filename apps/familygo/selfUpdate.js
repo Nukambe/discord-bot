@@ -47,6 +47,21 @@ const githubRequest = async (url, accept) => {
 };
 
 /**
+ * Best-effort delete. Cleanup must never fail an update that has already
+ * installed — a leftover temp dir or zip is harmless, and the `.old` exe is
+ * handled separately (see the startup sweep below).
+ */
+const tryRemove = (target, opts = {}) => {
+    try {
+        fs.rmSync(target, { force: true, ...opts });
+        return true;
+    } catch (err) {
+        console.warn(`${stamp()} ⚠️ Couldn't remove ${target}: ${err.message}`);
+        return false;
+    }
+};
+
+/**
  * @returns {Promise<boolean>} true if an update was installed and a new
  *   process has been spawned — the caller should exit immediately without
  *   starting the bot. false if it's safe to continue starting normally.
@@ -60,6 +75,17 @@ export async function checkForUpdatesAndMaybeRestart() {
     const appDir = path.dirname(process.execPath);
     const exeName = path.basename(process.execPath);
     const versionFile = path.join(appDir, 'familygo-version.txt');
+    const currentExePath = path.join(appDir, exeName);
+    const oldExePath = `${currentExePath}.old`;
+
+    // Sweep the previous update's renamed-aside exe. It can't be deleted during the
+    // update itself — that file backs the then-running process, and Windows refuses to
+    // unlink a running image — so the launch after the swap is the first moment it's
+    // actually deletable. Must happen before any new rename, which would otherwise
+    // collide with the leftover.
+    if (fs.existsSync(oldExePath) && tryRemove(oldExePath)) {
+        console.log(`${stamp()} 🧹 Removed leftover ${path.basename(oldExePath)} from a previous update.`);
+    }
 
     console.log(`${stamp()} 🔎 Checking ${REPO} for a newer MogoBot release...`);
 
@@ -108,18 +134,22 @@ export async function checkForUpdatesAndMaybeRestart() {
 
         // Windows lets a running exe's backing file be renamed aside even
         // while it's executing — that's what makes swapping it in place safe.
-        const currentExePath = path.join(appDir, exeName);
-        fs.renameSync(currentExePath, `${currentExePath}.old`);
+        fs.renameSync(currentExePath, oldExePath);
 
         fs.cpSync(extractDir, appDir, {
             recursive: true,
             force: true,
             filter: (src) => path.basename(src) !== '.env',
         });
-        fs.rmSync(`${currentExePath}.old`, { force: true });
-        fs.rmSync(extractDir, { recursive: true, force: true });
-        fs.rmSync(zipPath, { force: true });
+        // Recorded before cleanup so a failed delete can't leave the new files
+        // installed but the version file still claiming the old tag.
         fs.writeFileSync(versionFile, latestTag);
+
+        // The `.old` exe is NOT deleted here: it now backs this running process, and
+        // Windows won't unlink a running image (this delete is what used to fail every
+        // update with "unlink failed"). The startup sweep above removes it next launch.
+        tryRemove(extractDir, { recursive: true });
+        tryRemove(zipPath);
 
         console.log(`${stamp()} ✅ Update installed (now ${latestTag}). Relaunching in a new window...`);
 
@@ -137,6 +167,13 @@ export async function checkForUpdatesAndMaybeRestart() {
         }).unref();
         return true;
     } catch (err) {
+        // If the exe was already renamed aside but the new one never landed, put it
+        // back so the next manual launch still finds something to run.
+        try {
+            if (!fs.existsSync(currentExePath) && fs.existsSync(oldExePath)) {
+                fs.renameSync(oldExePath, currentExePath);
+            }
+        } catch { }
         console.warn(`${stamp()} ⚠️ Update failed, continuing with current build: ${err.message}`);
         return false;
     }

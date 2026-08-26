@@ -14,37 +14,36 @@ const ALBUM_PREVIEWS_CHANNEL_ID = "1449448347965460553";
 const MAX_EXTRA_IMAGE_EMBEDS = 9;
 
 // Maps a post's category tag (from parseFutureEventPost's `tags`) to a target channel
-// and an optional banner line prepended to the message content. Checked in this order;
-// the first tag on a post that has a route wins.
+// and an optional emoji wrapped around the post's title in the message content (the wiki
+// post title already names the event, so there's no separate heading line). Checked in
+// this order; the first tag on a post that has a route wins.
 const CATEGORY_ROUTES = {
   "dig-minigame": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner: "<:dig_pickaxe:1538289771686928465> UPCOMING DIG TREASURES <:dig_pickaxe:1538289771686928465>",
+    emoji: "<:dig_pickaxe:1538289771686928465>",
   },
   "prize-drop": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner: "<:prize_drop:1531717495533076560> UPCOMING PRIZE DROP <:prize_drop:1531717495533076560>",
+    emoji: "<:prize_drop:1531717495533076560>",
   },
   "tycoon-racers": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner:
-      "<:RaceCup_Currency_Icon:1441936191870992454> UPCOMING RACERS <:RaceCup_Currency_Icon:1441936191870992454>",
+    emoji: "<:RaceCup_Currency_Icon:1441936191870992454>",
   },
   "partner-events": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner: "<:high_five:1533293260678627448> UPCOMING PARTNERS <:high_five:1533293260678627448>",
+    emoji: "<:high_five:1533293260678627448>",
   },
   "adventure-club": {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
-    banner:
-      "<:AdventureEvent_Icon_Commodity:1489742463345234091> UPCOMING ADVENTURES <:AdventureEvent_Icon_Commodity:1489742463345234091>",
+    emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>",
   },
   "golden-blitz": {
     channelId: GOLDEN_BLITZ_CHANNEL_ID,
-    banner: "<:GoldenBlitz:1437570226966495373> UPCOMING GOLDEN BLITZ <:GoldenBlitz:1437570226966495373>",
+    emoji: "<:GoldenBlitz:1437570226966495373>",
   },
-  "sticker-albums": { channelId: ALBUM_PREVIEWS_CHANNEL_ID, banner: null },
-  albums: { channelId: ALBUM_PREVIEWS_CHANNEL_ID, banner: null },
+  "sticker-albums": { channelId: ALBUM_PREVIEWS_CHANNEL_ID, emoji: null },
+  albums: { channelId: ALBUM_PREVIEWS_CHANNEL_ID, emoji: null },
 };
 
 // Every channel a post can land in. The already-posted check runs before a post's tags (and
@@ -58,7 +57,7 @@ const ALL_TARGET_CHANNEL_IDS = [
  * the daily "Today's Events" posts, which are handled by the separate daily-events
  * cron/command, and the "Free Dice Links Today" post, which is handled by
  * postNewFreeDiceLinks — and post one Discord message per post. Each post routes to a
- * channel/banner based on its category tag (see CATEGORY_ROUTES), falling back to
+ * channel/emoji based on its category tag (see CATEGORY_ROUTES), falling back to
  * FUTURE_EVENTS_CHANNEL_ID.
  *
  * The window covers two days rather than just "yesterday" so that the scheduled midnight run
@@ -158,8 +157,8 @@ async function postFutureEvent(client, data, opts = {}) {
 
   // Embed titles don't render markdown, so the big-header styling has to live in the
   // message content — the embed keeps its own (plain) title as the clickable link.
-  const bannerLine = route?.banner ? `${route.banner}\n` : "";
-  const content = `${bannerLine}# ${data.title}`;
+  const emoji = route?.emoji;
+  const content = emoji ? `# ${emoji} ${data.title} ${emoji}` : `# ${data.title}`;
 
   await channel.send({ content, embeds: [mainEmbed, ...imageEmbeds] });
 }
