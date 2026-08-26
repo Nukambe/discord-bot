@@ -1,12 +1,17 @@
 import { getMogoEventPage } from "./getEvents.js";
 import { getFreeDiceLinks } from "./getFreeDiceLinks.js";
 import { toEstDateString, getYesterdayEstDateString } from "../../util/dateUtils.js";
-import { fetchPostedHaystack, haystackHasUrl } from "./alreadyPosted.js";
+import { fetchPostedHaystack, haystackHasUrl, urlKey } from "./alreadyPosted.js";
+import { getLastPosts, updateLastPosts } from "./db.js";
 
 const FREE_DICE_LINKS_URL = "https://monopolygo.wiki/latest-reward-links";
 
 // Live channel for free dice link posts. Hardcoded (not env-based) per request.
 const FREE_DICE_LINKS_CHANNEL_ID = "1390326248055767184";
+
+// How many recently posted claim-link keys to keep in db.lastPosts.freeDice — comfortably
+// more than the two-day scan window can hold, small enough to keep the db message short.
+const FREE_DICE_STATE_LIMIT = 20;
 
 /**
  * Fetch the Monopoly GO Wiki's "Free Dice Links Today" page and post one Discord message
@@ -68,8 +73,14 @@ export const postNewFreeDiceLinks = async (client, opts = {}) => {
   if (!channelId) throw new Error("[postNewFreeDiceLinks] Missing target channel ID");
   const channel = await client.channels.fetch(channelId);
 
+  // Two dedupe layers, both skipped in debug so a test run always posts: the channel scan
+  // (survives db loss) and db.lastPosts.freeDice (keeps the 7:30pm cron and a manual
+  // /free-dice run from double-posting each other's links, whichever ran first).
   const posted = debug ? "" : await fetchPostedHaystack(client, [channelId]);
-  const fresh = links.filter((link) => !haystackHasUrl(posted, link.claimUrl));
+  const storedKeys = debug ? [] : (await getLastPosts(client)).freeDice ?? [];
+  const fresh = links.filter(
+    (link) => !haystackHasUrl(posted, link.claimUrl) && !storedKeys.includes(urlKey(link.claimUrl))
+  );
 
   if (!fresh.length) {
     console.log(`ℹ️ All ${links.length} free dice link(s) in window were already posted`);
@@ -79,6 +90,11 @@ export const postNewFreeDiceLinks = async (client, opts = {}) => {
   for (const link of fresh) {
     await channel.send({ content: formatFreeDiceLinkContent(link, { debugFallback }) });
     console.log(`✅ Posted free dice link: ${link.claimUrl}`);
+  }
+
+  if (!debug) {
+    const keys = [...storedKeys, ...fresh.map((link) => urlKey(link.claimUrl))];
+    await updateLastPosts(client, { freeDice: keys.slice(-FREE_DICE_STATE_LIMIT) });
   }
 };
 

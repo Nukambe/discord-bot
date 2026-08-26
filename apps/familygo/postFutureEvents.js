@@ -2,7 +2,8 @@ import { getMogoWikiNews, getFutureEventPosts } from "./getFutureEvents.js";
 import { getMogoEventPage } from "./getEvents.js";
 import { parseFutureEventPost } from "./parseFutureEventPost.js";
 import { toEstDateString, getYesterdayEstDateString } from "../../util/dateUtils.js";
-import { fetchPostedHaystack, haystackHasUrl } from "./alreadyPosted.js";
+import { fetchPostedHaystack, haystackHasUrl, urlKey } from "./alreadyPosted.js";
+import { getLastPosts, updateLastPosts } from "./db.js";
 
 // Live channels for /future-events posts. Hardcoded (not env-based) per request.
 const FUTURE_EVENTS_CHANNEL_ID = "1393942240300372008";
@@ -106,6 +107,13 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
   }
   console.log(`🔗 Found ${posts.length} new post(s) for ${window} (${found.length} in window)`);
 
+  // db.lastPosts.futureEvents holds the most recent post URL per event type — the second
+  // dedupe layer alongside the channel scan above, keeping the midnight cron and a manual
+  // /future-events run from double-posting each other's work, whichever ran first. Skipped
+  // (and never written) in debug so a test run always posts. The check has to wait until
+  // after each post page is parsed, since the event type comes from the post's tags.
+  const lastFutureEvents = debug ? {} : { ...((await getLastPosts(client)).futureEvents ?? {}) };
+
   for (const post of posts) {
     try {
       const postHtml = await getMogoEventPage(post.url, { debug });
@@ -115,8 +123,23 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
       }
 
       const data = parseFutureEventPost(postHtml, { sourceUrl: post.url });
+      const category = resolveCategoryKey(data.tags);
+      const key = urlKey(data.url || post.url);
+
+      if (!debug && lastFutureEvents[category] === key) {
+        console.log(`ℹ️ Skipping ${data.title} — already the most recent ${category} post in db`);
+        continue;
+      }
+
       await postFutureEvent(client, data, { debug });
       console.log(`✅ Posted: ${data.title}`);
+
+      if (!debug) {
+        // Recorded per post rather than once at the end, so a crash mid-loop
+        // still remembers everything that actually went out.
+        lastFutureEvents[category] = key;
+        await updateLastPosts(client, { futureEvents: { ...lastFutureEvents } });
+      }
     } catch (err) {
       console.error(`💥 Failed to process/post ${post.url}:`, err);
     }
@@ -125,16 +148,17 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
   console.log("🏁 Finished postFutureEventsToDiscord\n");
 };
 
-function resolveCategoryRoute(tags) {
+/** The CATEGORY_ROUTES key for a post's first routed tag, or "general" (no route). */
+function resolveCategoryKey(tags) {
   for (const tag of tags || []) {
-    if (CATEGORY_ROUTES[tag]) return CATEGORY_ROUTES[tag];
+    if (CATEGORY_ROUTES[tag]) return tag;
   }
-  return null;
+  return "general";
 }
 
 async function postFutureEvent(client, data, opts = {}) {
   const { debug = false } = opts;
-  const route = resolveCategoryRoute(data.tags);
+  const route = CATEGORY_ROUTES[resolveCategoryKey(data.tags)] ?? null;
   const channelId = debug ? process.env.TEST_CHANNEL_ID : route?.channelId || FUTURE_EVENTS_CHANNEL_ID;
   if (!channelId) throw new Error("[postFutureEvent] Missing target channel ID");
 

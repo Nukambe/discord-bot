@@ -23,6 +23,13 @@ export const defaultDb = () => ({
     windowEndTime: "15:30",    // ET, 24h HH:mm — next day, retries stop here
     retryIntervalMinutes: 30,  // how often it retries until it succeeds
   },
+  // State of the most recent post per job, so a scheduled run and its manual
+  // slash-command twin can't double-post (see getLastPosts/updateLastPosts).
+  lastPosts: {
+    daily: null,      // dateSlug of the most recent daily events post
+    freeDice: [],     // urlKey()s of recently posted free-dice claim links
+    futureEvents: {}, // { [category tag or "general"]: urlKey() of its most recent post }
+  },
   ts: Date.now(),
 });
 
@@ -117,6 +124,51 @@ export async function updateDb(client, patch) {
   }
 
   return next;
+}
+
+/**
+ * Read the last-post state (see defaultDb().lastPosts). Never throws — a db
+ * that can't be read returns {} so the caller falls back to its channel-scan
+ * dedupe rather than blocking a post.
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<object>}
+ */
+export async function getLastPosts(client) {
+  try {
+    const db = await getDb(client);
+    return db?.lastPosts ?? {};
+  } catch (err) {
+    console.warn("⚠️ Couldn't read last-post state, continuing without it:", err.message);
+    return {};
+  }
+}
+
+/**
+ * Merge `patch` into db.lastPosts and post the result as a new db message.
+ * Values in `patch` replace their key wholesale — callers maintaining a nested
+ * object (futureEvents) pass the already-merged object.
+ *
+ * Deliberately does NOT fire onDbChange listeners: those restart the schedule
+ * crons, and post-state writes happen after every post — nothing about the
+ * schedule changed. Never throws — failing to record state must not fail the
+ * post that just went out (the channel-scan dedupe still covers the gap).
+ * @param {import('discord.js').Client} client
+ * @param {object} patch shallow-merged onto db.lastPosts
+ * @returns {Promise<object|null>} the new db, or null if the write failed
+ */
+export async function updateLastPosts(client, patch) {
+  try {
+    const channel = await fetchDbChannel(client);
+    const lastMsg = await fetchLastMessage(channel);
+    const current = parseDbFromMessage(lastMsg?.content) ?? defaultDb();
+    const lastPosts = { ...defaultDb().lastPosts, ...current.lastPosts, ...patch };
+    const next = { ...current, lastPosts, ts: Date.now() };
+    await channel.send(formatDbMessage("🗄️ Database updated (last posts)", next));
+    return next;
+  } catch (err) {
+    console.warn("⚠️ Couldn't record last-post state:", err.message);
+    return null;
+  }
 }
 
 /**

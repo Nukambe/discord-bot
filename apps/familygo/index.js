@@ -14,7 +14,7 @@ import path from "node:path";
 import { runGiftRotation, shouldSkipRotation } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
 import { fortuneFlipChannelListener } from "./postInstructions.js";
-import { initDb, defaultDb, onDbChange } from "./db.js";
+import { initDb, defaultDb, onDbChange, getLastPosts, updateLastPosts } from "./db.js";
 import { handleConfigModalSubmit } from "./commands/config.js";
 import "dotenv/config";
 
@@ -38,6 +38,18 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     const { debug = false } = opts;
 
     console.log(`🌀 Starting postEventToDiscord for date: ${dateSlug}${debug ? " (debug → test channel)" : ""}`);
+
+    // Step 0: Skip if the db already records this date as posted — this is what keeps the
+    // cron and a manual /post-daily from double-posting each other's work, whichever ran
+    // first. Checked before any scraping so a skipped run never opens a browser window.
+    // Debug bypasses it (and never records) so a test post always goes out.
+    if (!debug) {
+        const lastPosts = await getLastPosts(client);
+        if (lastPosts.daily === dateSlug) {
+            console.log(`ℹ️ Daily post for ${dateSlug} already recorded in db — skipping`);
+            return;
+        }
+    }
 
     // Step 1: Retrieve HTML
     const eventsHtml = await getMogoWikiEvents({ debug });
@@ -86,6 +98,7 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
             debug,
         });
         console.log("✅ Successfully posted event to Discord");
+        if (!debug) await updateLastPosts(client, { daily: dateSlug });
     } catch (err) {
         console.error("💥 Failed to post event to Discord:", err);
     }
