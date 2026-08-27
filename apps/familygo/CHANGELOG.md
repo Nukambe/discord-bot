@@ -7,6 +7,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Fixed
+- Free dice links are no longer re-posted under a new URL. monopolygo.wiki wraps
+  Scopely's links in its own shortener and mints a fresh slug whenever it re-lists a
+  card, so the same reward kept arriving as a "new" link — and anyone clicking it was
+  told they'd already claimed it. Each href is now followed to Scopely's own
+  `mply.io` link (which is what gets posted, so it's stable) and to the campaign id
+  behind it (`monopolygo://reward-link/<id>`); dedupe keys off both, so no number of
+  wiki slugs can produce a repeat. Resolution is plain HTTPS — no extra Chrome
+  window — and falls back to the unresolved URL if a shortener is unreachable.
+- Free dice cards whose availability window has already closed are skipped instead
+  of posted as dead links.
 - Daily schedule post: "Dig Treasures" (and "Roll Treasures") now get the pickaxe
   emoji. The emoji only matched the name "Dig Minigame", which is not what the
   daily schedule calls the event, so it rendered as a plain `•` bullet.

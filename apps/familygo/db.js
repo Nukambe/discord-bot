@@ -27,7 +27,8 @@ export const defaultDb = () => ({
   // slash-command twin can't double-post (see getLastPosts/updateLastPosts).
   lastPosts: {
     daily: null,      // dateSlug of the most recent daily events post
-    freeDice: [],     // urlKey()s of recently posted free-dice claim links
+    freeDice: [],     // one key per recently posted free-dice link: its campaign id, or
+                      // urlKey() of the resolved claim link (see resolveRewardLink.js)
     futureEvents: {}, // { [category tag or "general"]: urlKey() of its most recent post }
   },
   ts: Date.now(),
