@@ -32,6 +32,18 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `/future-events` covers today's posts as well as yesterday's.
 
 ### Added
+- Weekly predictions post: every Sunday at 7:30pm Eastern, the bot posts the
+  upcoming Monday–Sunday event schedule from the wiki's `/events` calendar,
+  grouped by day with the usual event emojis, excluding milestone events and
+  tournaments. If the calendar doesn't cover the full week yet, it retries every
+  half hour (through Monday 3:30pm) until it does — same pattern as the daily
+  post. Multi-day spans (Peg-E, Sticker Boom) show their real end date, taken
+  from the calendar's underlying data rather than the cards' time-only labels.
+  Manual twin: `/weekly-predictions` (with the usual `debug` option); posts to a
+  hardcoded predictions channel (see `WEEKLY_CHANNEL_ID` in
+  `postWeeklyPredictions.js`).
+- The event-name → emoji map now lives in its own module (`emojiMap.js`), shared
+  by the daily schedule post and the weekly predictions post.
 - The self-updater logs every outcome, timestamped in Eastern time: the check
   starting, "up to date", the first-launch baseline, and the existing
   updating/failed lines. Previously the common paths returned silently, so a

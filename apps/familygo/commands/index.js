@@ -15,6 +15,7 @@ import ping from "./ping.js";
 import postDaily from "./postDaily.js";
 import skip from "./skip.js";
 import stickerRequest from "./sticker-request.js";
+import weeklyPredictions from "./weekly-predictions.js";
 
 export const staticCommands = [
   config,
@@ -28,4 +29,5 @@ export const staticCommands = [
   postDaily,
   skip,
   stickerRequest,
+  weeklyPredictions,
 ];

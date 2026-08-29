@@ -7,6 +7,7 @@ import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getE
 import { postEvent } from "./postEvent.js";
 import { postFutureEventsToDiscord } from "./postFutureEvents.js";
 import { postNewFreeDiceLinks } from "./postFreeDiceLinks.js";
+import { postWeeklyPredictions } from "./postWeeklyPredictions.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -246,6 +247,7 @@ let dailyPostTask = null;
 let giftRotationTask = null;
 let futureEventsTask = null;
 let freeDiceTask = null;
+let weeklyPredictionsTask = null;
 
 /**
  * (Re)start the daily-post cron using the given db's schedule.
@@ -415,6 +417,49 @@ const startFreeDiceCron = (client) => {
     );
 };
 
+/**
+ * Start the weekly-predictions cron: every Sunday at 7:30pm America/New_York, post the
+ * upcoming Monday–Sunday event schedule from the wiki's /events calendar (excluding
+ * milestone events and tournaments — see postWeeklyPredictions.js).
+ *
+ * Modeled on the daily-post retry loop rather than a single-shot cron: the tick runs
+ * every 30 minutes and is gated to a Sunday 19:30 → Monday 15:30 window, so if the
+ * calendar doesn't cover the full week yet at 7:30pm (postWeeklyPredictions returns
+ * false), the next half-hour tick tries again until it lands. Both dedupe layers are
+ * checked before any scraping, so once the week's post is out the remaining window
+ * ticks cost no browser window.
+ *
+ * Note the first attempt coincides with the 7:30pm free-dice cron (and the daily-post
+ * window opening) — on the packaged desktop build each wiki fetch is a visible Chrome
+ * window, so several may briefly appear together on Sunday evenings.
+ */
+const startWeeklyPredictionsCron = (client) => {
+    if (weeklyPredictionsTask) weeklyPredictionsTask.stop();
+
+    weeklyPredictionsTask = cron.schedule(
+        "*/30 * * * *",
+        async () => {
+            const now = new Date();
+            const [estYear, estMonth, estDay] = toEstDateString(now).split('-').map(Number);
+            const { hour: estHour, minute: estMinute } = toEstTimeParts(now);
+            const estDayOfWeek = new Date(estYear, estMonth - 1, estDay).getDay();
+
+            // Window: Sunday 19:30 through Monday 15:30 (mirrors the daily-post window)
+            const sundayEvening = estDayOfWeek === 0 && (estHour > 19 || (estHour === 19 && estMinute >= 30));
+            const mondaySpillover = estDayOfWeek === 1 && (estHour < 15 || (estHour === 15 && estMinute <= 30));
+            if (!sundayEvening && !mondaySpillover) return;
+
+            console.log("🔮 Attempting weekly predictions post...");
+            try {
+                await postWeeklyPredictions(client);
+            } catch (err) {
+                console.error("💥 Weekly predictions cron failed:", err);
+            }
+        },
+        { timezone: "America/New_York" }
+    );
+};
+
 client.once(Events.ClientReady, async () => {
     console.log(`✅ Discord ready as ${client.user.tag}`);
 
@@ -430,6 +475,7 @@ client.once(Events.ClientReady, async () => {
     startGiftRotationCron(client, db);
     startFutureEventsCron(client);
     startFreeDiceCron(client);
+    startWeeklyPredictionsCron(client);
 
     // Whenever a command updates the db, tear down and rebuild both crons
     // from the new schedule.

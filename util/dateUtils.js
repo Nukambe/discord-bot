@@ -84,6 +84,27 @@ export function toEstTimeParts(date) {
 }
 
 /**
+ * Format an instant as a short America/New_York date-and-time, e.g. "Aug 31, 3:00 PM".
+ * Built from typed parts (not a parsed locale string) for the same reason as
+ * toEstDateString above.
+ * @param {Date} date
+ * @returns {string}
+ */
+export function toEstShortDateTime(date) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const map = {};
+  for (const p of parts) map[p.type] = p.value;
+  return `${map.month} ${map.day}, ${map.hour}:${map.minute} ${map.dayPeriod}`;
+}
+
+/**
  * Get yesterday's calendar date in America/New_York, as "YYYY-MM-DD".
  * Used to find posts published "the day before" relative to an America/New_York midnight cron.
  * @returns {string} e.g. "2026-08-01"

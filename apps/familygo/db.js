@@ -30,6 +30,8 @@ export const defaultDb = () => ({
     freeDice: [],     // one key per recently posted free-dice link: its campaign id, or
                       // urlKey() of the resolved claim link (see resolveRewardLink.js)
     futureEvents: {}, // { [category tag or "general"]: urlKey() of its most recent post }
+    weekly: null,     // ET date ("YYYY-MM-DD") of the Monday whose week was last posted
+                      // by the weekly predictions job (postWeeklyPredictions.js)
   },
   ts: Date.now(),
 });
