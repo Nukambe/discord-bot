@@ -69,8 +69,9 @@ function dayHeader(estDate) {
  *   <:prize_drop:...> **Peg-E Prize Drop** `Aug 31, 4:00 PM - Sep 2, 12:59 PM`
  *
  * Events are grouped by the ET calendar date they *start* on (so an event spilling
- * past midnight isn't repeated on its second day), and the last day's message carries
- * the source link.
+ * past midnight isn't repeated on its second day), and the first day's message opens
+ * with the source link — wrapped in <angle brackets> so Discord doesn't attach a link
+ * preview embed.
  *
  * @param {Array<{ title: string, eventKey: string, start: Date, end: Date }>} events
  * @param {string[]} weekDates - 7 ET date strings, Monday through Sunday.
@@ -95,7 +96,7 @@ export function formatWeeklyPredictions(events, weekDates) {
     blocks.push([dayHeader(estDate), ...lines].join("\n"));
   }
 
-  if (blocks.length) blocks[blocks.length - 1] += `\n\n${CALENDAR_URL}`;
+  if (blocks.length) blocks[0] = `<${CALENDAR_URL}>\n${blocks[0]}`;
   return blocks;
 }
 
