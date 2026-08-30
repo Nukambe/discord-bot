@@ -96,7 +96,7 @@ export function formatWeeklyPredictions(events, weekDates) {
     blocks.push([dayHeader(estDate), ...lines].join("\n"));
   }
 
-  if (blocks.length) blocks[0] = `<${CALENDAR_URL}>\n${blocks[0]}`;
+  if (blocks.length) blocks[0] = `source: <${CALENDAR_URL}>\n${blocks[0]}`;
   return blocks;
 }
 
