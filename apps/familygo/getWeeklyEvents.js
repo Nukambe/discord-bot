@@ -55,8 +55,11 @@ export async function getMogoWikiCalendar(opts = {}) {
  *
  * @param {string} html - The /events calendar page HTML.
  * @param {{ debug?: boolean }} [opts]
- * @returns {Array<{ id: string, title: string, eventKey: string, imageUrl: string|null, start: Date, end: Date }>}
- *   Deduped by event id, sorted by start time.
+ * @returns {Array<{ id: string, title: string, eventKey: string, imageUrl: string|null, start: Date, end: Date, durationMinutes: number|null }>}
+ *   Deduped by event id, sorted by start time. `durationMinutes` is the record's
+ *   `local_duration` ("00:30:00" → 30): how long each flash-event *instance* lasts
+ *   within the start–end availability window. Null for backbone events, which carry
+ *   "00:00:00" or no value at all.
  */
 export function getCalendarEvents(html, opts = {}) {
   const { debug = false } = opts;
@@ -78,7 +81,9 @@ export function getCalendarEvents(html, opts = {}) {
       continue;
     }
 
-    const { event_id: id, title, event_key: eventKey, image_url: imageUrl, start_date, end_date } = record;
+    const {
+      event_id: id, title, event_key: eventKey, image_url: imageUrl, start_date, end_date, local_duration,
+    } = record;
     const start = new Date(start_date);
     const end = new Date(end_date);
     if (!id || !title || title === "$undefined" || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
@@ -94,6 +99,7 @@ export function getCalendarEvents(html, opts = {}) {
       imageUrl: typeof imageUrl === "string" && imageUrl !== "$undefined" ? imageUrl : null,
       start,
       end,
+      durationMinutes: parseLocalDuration(local_duration),
     });
   }
 
@@ -104,4 +110,16 @@ export function getCalendarEvents(html, opts = {}) {
   }
 
   return events;
+}
+
+/**
+ * "HH:MM:SS" → whole minutes, or null when the value is missing, "$undefined", or zero.
+ * @param {unknown} value
+ * @returns {number|null}
+ */
+function parseLocalDuration(value) {
+  const m = typeof value === "string" && value.match(/^(\d{1,2}):(\d{2}):(\d{2})$/);
+  if (!m) return null;
+  const minutes = Number(m[1]) * 60 + Number(m[2]) + Math.round(Number(m[3]) / 60);
+  return minutes > 0 ? minutes : null;
 }

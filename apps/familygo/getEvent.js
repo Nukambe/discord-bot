@@ -1,4 +1,5 @@
 import * as cheerio from 'cheerio';
+import { toEstShortDateTime } from '../../util/dateUtils.js';
 
 /**
  * Convert Monopoly GO "Today's Events" HTML into a Discord payload.
@@ -239,28 +240,12 @@ function safeHostname(url) {
 }
 
 /**
- * Convert a Unix timestamp in seconds (UTC) into a formatted local string.
- * Example input: 1763398800.0  -> "11/17/2025, 12:00:00 PM" (America/New_York)
+ * Convert a Unix timestamp in seconds (UTC) into the short America/New_York form the
+ * daily post prints verbatim (formatEvent.js doesn't reformat it), e.g.
+ * 1763398800 -> "Nov 17, 12:00 PM".
  */
 function formatUtcTimestamp(seconds) {
-  const ms = seconds * 1000;
-  const d = new Date(ms);
+  const d = new Date(seconds * 1000);
   if (Number.isNaN(d.getTime())) return '';
-
-  try {
-    // Adjust as needed; this matches your 11/17/2025, 12:00:00 PM example for EST.
-    return d.toLocaleString('en-US', {
-      timeZone: 'America/New_York',
-      month: '2-digit',
-      day: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true,
-    });
-  } catch {
-    // Fallback: ISO-ish UTC
-    return d.toISOString().replace('T', ' ').replace(/\.\d+Z$/, ' UTC');
-  }
+  return toEstShortDateTime(d);
 }

@@ -1,5 +1,32 @@
-import { pickEmoji } from "./emojiMap.js";
+import { pickEmoji, pickQuickWinEmoji } from "./emojiMap.js";
 
+// The wiki lists these under Tournaments, but they're the always-running backbone
+// entries (the week-long "Week Of" milestone and the Piggy Bank), not something the
+// day's schedule is planned around — dropped from the post, in every section.
+const EXCLUDED_EVENTS = /\bweek\s*of\b|\bpiggy\s*bank\b/i;
+
+/**
+ * Turn the parsed "Today's Events" payload into the daily Discord post:
+ *
+ *   source: <https://monopolygo.wiki/todays-events-sep-06-2026>   ← message content
+ *   ┌ 🎲 Monopoly GO! Events | Sep 06, 2026                        ← embed title
+ *   │ __**Tournaments**__                                          ← field
+ *   │ <:tycoon_class:…> **Tycoon Class**
+ *   │ • Start: `Sep 6, 4:00 PM`
+ *   │ • End: `Sep 7, 12:59 PM`
+ *   │ __**Flash Events**__
+ *   │ <:HighRoller:…> **High Roller**
+ *   │ • Start: … / • End: … / • Duration: `10 Minutes`
+ *   │ __**Quick Wins**__
+ *   │ <:pass_go:…> **Pass Go 1 time**
+ *   │ • Cash / • Flags 60
+ *   └ (first article image; the rest ride along as image-only embeds)
+ *
+ * The source link is wrapped in <angle brackets> so Discord doesn't attach a link
+ * preview embed; the slug inside it is still what the daily cron's channel scan
+ * matches on. The date/time strings arrive already formatted from
+ * parseMonopolyEventPage and are printed as-is.
+ */
 export function formatMogoDiscordMessage(payload, source) {
   if (!payload?.content) return { content: "", embeds: [] };
 
@@ -8,10 +35,9 @@ export function formatMogoDiscordMessage(payload, source) {
   const title = `🎲 Monopoly GO! Events | ${dateText}`;
 
   // Build sections
-  const tournamentsField = buildTournamentsField(parsed.sections["Tournaments"] || [], dateText);
+  const tournamentsField = buildTournamentsField(parsed.sections["Tournaments"] || []);
   const flashField = buildFlashEventsField(
-    parsed.sections["Special Events"] || parsed.sections["Flash Events"] || [],
-    dateText
+    parsed.sections["Special Events"] || parsed.sections["Flash Events"] || []
   );
   const quickWinsField = buildQuickWinsField(parsed.sections["Quick Wins"] || []);
 
@@ -22,27 +48,15 @@ export function formatMogoDiscordMessage(payload, source) {
     fields: []
   };
 
-  if (tournamentsField) {
-    main.fields.push(tournamentsField);
-  }
-
-  // spacer
-  if (tournamentsField && (flashField || quickWinsField)) {
-    main.fields.push({ name: "\u200B", value: "\u200B", inline: false });
-  }
-
-  if (flashField) {
-    main.fields.push(flashField);
-  }
-
-  // spacer
-  if (flashField && quickWinsField) {
-    main.fields.push({ name: "\u200B", value: "\u200B", inline: false });
-  }
-
-  if (quickWinsField) {
-    main.fields.push(quickWinsField);
-  }
+  // Sections are separated by a blank line appended *inside* the preceding field's
+  // value (a line holding only a zero-width space). A separate spacer field with a
+  // zero-width name/value renders as a gap on desktop but collapses to nothing on the
+  // iOS client, so the section headers ran straight into the previous section.
+  const sections = [tournamentsField, flashField, quickWinsField].filter(Boolean);
+  sections.forEach((field, i) => {
+    if (i < sections.length - 1) field.value = trimTo(field.value, 1022) + "\n\u200B";
+  });
+  main.fields.push(...sections);
 
   // Images: first on main embed, others as image-only embeds
   const MAX_IMAGE_EMBEDS = 4;
@@ -61,7 +75,7 @@ export function formatMogoDiscordMessage(payload, source) {
       image: { url }
     }));
 
-  return { content: `source: ${source}`, embeds: [main, ...imageEmbeds] };
+  return { content: source ? `source: <${source}>` : "", embeds: [main, ...imageEmbeds] };
 }
 
 /* ------------------------------------------------------------------ */
@@ -104,69 +118,42 @@ function splitIntoSections(plain) {
 /* Field builders                                                      */
 /* ------------------------------------------------------------------ */
 
-function buildTournamentsField(bullets, pageDateStr) {
-  if (!bullets.length) return null;
+function buildTournamentsField(bullets) {
+  const events = bullets.map(parseBullet).filter(ev => !EXCLUDED_EVENTS.test(ev.name));
+  if (!events.length) return null;
 
-  const header = "**__Tournaments__**";
-  const body = bullets
-    .map(b => {
-      const { name, start, end, durationHMS } = parseBullet(b, pageDateStr);
-      const emoji = /\btycoon\s*class\b/i.test(name)
+  const body = events
+    .map(ev => {
+      const emoji = /\btycoon\s*class\b/i.test(ev.name)
         ? "<:tycoon_class:1533835656315539637>"
         : "<:main_event:1537078329939599390>";
-
-      const lines = [
-        `${emoji} **${name}**`,
-        `- Start: \`${start || "Unknown"}\``,
-        `- End: \`${end || "Unknown"}\``
-      ];
-
-      if (durationHMS) {
-        // Tournament duration is days:hours:minutes
-        lines.push(`- Duration: \`${prettyTournamentDuration(durationHMS)}\``);
-      }
-
-      return lines.concat("").join("\n");
+      // Tournament duration, when the wiki gives one, is days:hours:minutes
+      const duration = ev.durationHMS ? prettyTournamentDuration(ev.durationHMS) : null;
+      return eventBlock(emoji, ev, duration);
     })
-    .join("\n");
+    .join("\n\n");
 
   return {
-    name: header,
+    name: "__**Tournaments**__",
     value: trimTo(body, 1024),
     inline: false
   };
 }
 
-function buildFlashEventsField(bullets, pageDateStr) {
-  if (!bullets.length) return null;
+function buildFlashEventsField(bullets) {
+  const events = bullets.map(parseBullet).filter(ev => !EXCLUDED_EVENTS.test(ev.name));
+  if (!events.length) return null;
 
-  const header = "**__Flash Events__**";
-  const body = bullets
-    .map(b => {
-      const { name, start, end, startTimeOnly, endTimeOnly, durationHMS } = parseBullet(b, pageDateStr);
-      const emoji = pickEmoji(name);
-
-      // We assume `start`/`end` are already fully formatted from the parser.
-      const startText = start || startTimeOnly || "Unknown";
-      const endText = end || endTimeOnly || "Unknown";
-
-      const lines = [
-        `${emoji} **${name}**`,
-        `- Start: \`${startText}\``,
-        `- End: \`${endText}\``
-      ];
-
-      if (durationHMS) {
-        // Flash/other events duration is hours:minutes:seconds
-        lines.push(`- Duration: \`${prettyDuration(durationHMS)}\``);
-      }
-
-      return lines.concat("").join("\n");
+  const body = events
+    .map(ev => {
+      // Flash event duration is hours:minutes(:seconds)
+      const duration = ev.durationHMS ? prettyDuration(ev.durationHMS) : null;
+      return eventBlock(pickEmoji(ev.name), ev, duration);
     })
-    .join("\n");
+    .join("\n\n");
 
   return {
-    name: header,
+    name: "__**Flash Events**__",
     value: trimTo(body, 1024),
     inline: false
   };
@@ -175,27 +162,37 @@ function buildFlashEventsField(bullets, pageDateStr) {
 function buildQuickWinsField(bullets) {
   if (!bullets.length) return null;
 
-  const header = "**__Quick Wins__**";
   const body = bullets
     .map(b => {
       const { name, rewards } = parseQuickWin(b);
-      const lines = [`**${name}**`];
-
-      if (rewards.length) {
-        for (const r of rewards) {
-          lines.push(`- ${r}`);
-        }
-      }
-
-      return lines.concat("").join("\n");
+      const lines = [`${pickQuickWinEmoji(name)} **${name}**`];
+      for (const r of rewards) lines.push(`• ${r}`);
+      return lines.join("\n");
     })
-    .join("\n");
+    .join("\n\n");
 
   return {
-    name: header,
+    name: "__**Quick Wins**__",
     value: trimTo(body, 1024),
     inline: false
   };
+}
+
+/**
+ * One event as a bold emoji + name line with Start/End bullets and, when known, a
+ * Duration bullet. Markdown headings don't render inside embed fields, and the
+ * bullets are literal "•" characters rather than markdown list syntax ("* " / "- "):
+ * some mobile clients fold a list item into the plain-text line above it, so the
+ * bullets showed up on the same line as the event name.
+ */
+function eventBlock(emoji, { name, start, end }, duration) {
+  const lines = [
+    `${emoji} **${name}**`,
+    `• Start: \`${start || "Unknown"}\``,
+    `• End: \`${end || "Unknown"}\``
+  ];
+  if (duration) lines.push(`• Duration: \`${duration}\``);
+  return lines.join("\n");
 }
 
 /* ------------------------------------------------------------------ */
@@ -203,11 +200,11 @@ function buildQuickWinsField(bullets) {
 /* ------------------------------------------------------------------ */
 
 /**
- * Parse a bullet line into structured data.
- * We now trust the date/time strings that come from `parseMonopolyEventPage`,
- * so no more re-formatting here — we just extract them.
+ * Parse a bullet line ("• **Name** — <start> → <end>  •  Duration: h:mm") into
+ * structured data. The date/time strings come pre-formatted from
+ * `parseMonopolyEventPage`, so they're extracted, not reformatted.
  */
-function parseBullet(line /*, pageDateStr */) {
+function parseBullet(line) {
   const name = (line.match(/\*\*(.+?)\*\*/) || [, "Event"])[1].trim();
 
   // Duration is captured as h:mm, hh:mm:ss, or dd:hh:mm (we treat it as raw)
@@ -227,19 +224,10 @@ function parseBullet(line /*, pageDateStr */) {
     endRaw = right.trim();
   }
 
-  const start = startRaw || null;
-  const end = endRaw || null;
-
-  // Optional "time only" variants (seconds stripped) if you want them
-  const startTimeOnly = startRaw ? stripSeconds(startRaw) : "";
-  const endTimeOnly = endRaw ? stripSeconds(endRaw) : "";
-
   return {
     name,
-    start,
-    end,
-    startTimeOnly,
-    endTimeOnly,
+    start: startRaw || null,
+    end: endRaw || null,
     durationHMS
   };
 }
@@ -267,17 +255,6 @@ function parseQuickWin(line) {
 function extractDateFromTitle(title) {
   const m = title.match(/\(([^)]+)\)/);
   return m?.[1]?.trim() || "";
-}
-
-/**
- * Remove seconds from a time/date-time string like:
- * "11/17/2025, 12:00:00 PM" -> "11/17/2025, 12:00 PM"
- * "12:00:00 PM" -> "12:00 PM"
- */
-function stripSeconds(t) {
-  return t
-    .replace(/:00(\s*[AP]M)?$/i, "$1")
-    .replace(/:([0-5]\d):[0-5]\d/i, ":$1");
 }
 
 /* ------------------------------------------------------------------ */

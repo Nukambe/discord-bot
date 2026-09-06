@@ -14,7 +14,7 @@ async function weeklyEventsTest() {
     const all = getCalendarEvents(html, { debug: true });
     console.log(`Parsed ${all.length} calendar events`);
     for (const ev of all) {
-        console.log(`  ${ev.eventKey || "?"} | ${ev.title} | ${ev.start.toISOString()} -> ${ev.end.toISOString()}`);
+        console.log(`  ${ev.eventKey || "?"} | ${ev.title} | ${ev.durationMinutes ?? "-"} min | ${ev.start.toISOString()} -> ${ev.end.toISOString()}`);
     }
 
     const mondayDate = getUpcomingMondayEstDate();
@@ -31,7 +31,7 @@ async function weeklyEventsTest() {
     });
 
     const weekSet = new Set(weekDates);
-    const excluded = /milestone|tournament/i;
+    const excluded = /milestone|tournament|week of|piggy bank/i;
     const events = all.filter((ev) =>
         weekSet.has(toEstDateString(ev.start)) && !excluded.test(ev.eventKey) && !excluded.test(ev.title)
     );

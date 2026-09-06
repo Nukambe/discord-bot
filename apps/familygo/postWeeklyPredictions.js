@@ -11,8 +11,10 @@ const WEEKLY_CHANNEL_ID = "1446519556863430749";
 
 // Weekly predictions exclude these calendar entry types — they're the always-running
 // backbone events, not the flash schedule people plan around. Tested against both the
-// record's event_key ("MilestoneEvent", "TycoonClassTournament") and its title.
-const EXCLUDED_TYPES = /milestone|tournament/i;
+// record's event_key ("MilestoneEvent", "TycoonClassTournament") and its title; the
+// week-long "Week Of" and "Piggy Bank" entries are named outright because the daily
+// post drops them too and their event_key hasn't been observed.
+const EXCLUDED_TYPES = /milestone|tournament|\bweek\s*of\b|\bpiggy\s*bank\b/i;
 
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
@@ -65,15 +67,17 @@ function dayHeader(estDate) {
  * Build the post as one message per day that has events, e.g.:
  *
  *   ## __🔮 Monday, 08/31/2026__
- *   <:HighRoller:...> **High Roller** `Aug 31, 3:00 AM - Aug 31, 8:59 AM`
- *   <:prize_drop:...> **Peg-E Prize Drop** `Aug 31, 4:00 PM - Sep 2, 12:59 PM`
+ *   > <:HighRoller:...> **High Roller** (10 Mins) `Aug 31, 3:00 AM - Aug 31, 8:59 AM`
+ *   > <:prize_drop:...> **Peg-E Prize Drop** `Aug 31, 4:00 PM - Sep 2, 12:59 PM`
  *
- * Events are grouped by the ET calendar date they *start* on (so an event spilling
- * past midnight isn't repeated on its second day), and the first day's message opens
- * with the source link — wrapped in <angle brackets> so Discord doesn't attach a link
- * preview embed.
+ * Each event is a "> " quote line: the emoji, the name, how long one instance of the
+ * event runs (omitted when the calendar doesn't say — multi-day events like Peg-E),
+ * then the availability window. Events are grouped by the ET calendar date they
+ * *start* on (so an event spilling past midnight isn't repeated on its second day),
+ * and the first day's message opens with the source link — wrapped in <angle brackets>
+ * so Discord doesn't attach a link preview embed.
  *
- * @param {Array<{ title: string, eventKey: string, start: Date, end: Date }>} events
+ * @param {Array<{ title: string, eventKey: string, start: Date, end: Date, durationMinutes?: number|null }>} events
  * @param {string[]} weekDates - 7 ET date strings, Monday through Sunday.
  * @returns {string[]} One string per day, each sent as its own Discord message.
  */
@@ -87,12 +91,14 @@ export function formatWeeklyPredictions(events, weekDates) {
   for (const [estDate, dayEvents] of byDay) {
     if (!dayEvents.length) continue;
     dayEvents.sort((a, b) => a.start - b.start);
-    const lines = dayEvents.map(
-      (ev) =>
-        // event_key is included in the emoji lookup as a fallback spelling ("PrizeDrop",
-        // "WheelBoost", ...) for when a title doesn't match any pattern on its own.
-        `${pickEmoji(`${ev.title} ${ev.eventKey}`)} **${ev.title}** \`${toEstShortDateTime(ev.start)} - ${toEstShortDateTime(ev.end)}\``
-    );
+    const lines = dayEvents.map((ev) => {
+      // event_key is included in the emoji lookup as a fallback spelling ("PrizeDrop",
+      // "WheelBoost", ...) for when a title doesn't match any pattern on its own.
+      const emoji = pickEmoji(`${ev.title} ${ev.eventKey}`);
+      const duration = ev.durationMinutes ? ` (${ev.durationMinutes} Mins)` : "";
+      const window = `${toEstShortDateTime(ev.start)} - ${toEstShortDateTime(ev.end)}`;
+      return `> ${emoji} **${ev.title}**${duration} \`${window}\``;
+    });
     blocks.push([dayHeader(estDate), ...lines].join("\n"));
   }
 

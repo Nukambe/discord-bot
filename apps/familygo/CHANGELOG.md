@@ -6,6 +6,21 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Daily schedule post reformatted: each event is a bold emoji + name line with
+  Start/End/Duration bullets underneath in the short `Sep 6, 4:00 PM` form (no
+  seconds, no year), and Quick Wins tasks get their own emojis (pass go, chance,
+  community chest, utility, landmark, cash, rolls, heist, shutdown, sticker —
+  `QUICK_WIN_EMOJI_MAP` in `emojiMap.js`). The "Week Of" and "Piggy Bank" entries
+  the wiki lists under Tournaments are dropped. The `source:` link is wrapped in
+  angle brackets so Discord no longer attaches a link preview; the event images
+  and the milestone-channel forward are unchanged.
+- Weekly predictions reformatted: each event is a `> ` quote line showing how long
+  one instance runs — "(30 Mins)", from the calendar record's `local_duration`;
+  omitted for multi-day events that don't have one — ahead of its availability
+  window. "Week Of" and "Piggy Bank" are excluded alongside milestones and
+  tournaments.
+
 ### Added
 - `/dump-logs` — posts the process's console history (captured into an
   in-memory ring buffer by `logBuffer.js`, hooked into stdout/stderr as the
@@ -15,6 +30,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   off the user's machine; the capture only covers the current process run.
 
 ### Fixed
+- Daily schedule post: "Blocks Boutique" now gets the blocks emoji. The rule only
+  matched the preview-post spelling "Minigame: Blocks", so the 9/6 schedule's
+  entry rendered as a plain `•` bullet.
 - Free dice links are no longer re-posted under a new URL. monopolygo.wiki wraps
   Scopely's links in its own shortener and mints a fresh slug whenever it re-lists a
   card, so the same reward kept arriving as a "new" link — and anyone clicking it was

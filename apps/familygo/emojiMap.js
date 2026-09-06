@@ -45,7 +45,9 @@ export const EMOJI_MAP = [
   { re: /\bjackpot\s*stash\b/i, emoji: "<:JackpotStash_FreeParking_Minigam:1437570232393793726>" },
   { re: /\badventures?\b/i, emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>" },
   { re: /\bpartner\s*event\b/i, emoji: "<:partners:1531685860410527954>" },
-  { re: /\bminigame:\s*blocks\b/i, emoji: "<:blocks_boutique:1529168959092424901>" },
+  // The daily schedule names this "Blocks Boutique" (preview posts said "Minigame: Blocks"),
+  // so the bare word is the only spelling that catches every variant.
+  { re: /\bblocks\b/i, emoji: "<:blocks_boutique:1529168959092424901>" },
   { re: /\bjuggle\s*jam\b/i, emoji: "<:carnival_games:1537956721065197618>" },
 ];
 
@@ -56,5 +58,35 @@ export const EMOJI_MAP = [
  */
 export function pickEmoji(name) {
   const found = EMOJI_MAP.find(({ re }) => re.test(name));
+  return found ? found.emoji : "•";
+}
+
+/**
+ * Custom server emojis for the daily post's Quick Wins tasks, matched against the task
+ * text ("Land on Community Chest 1 time", "Upgrade 1 Landmark", ...). Same
+ * first-match rule as EMOJI_MAP, so "Community Chest" must sit above the bare
+ * "Chance"/"Cash" patterns. Ids come from the guild's live emoji list — re-uploading
+ * an emoji mints a new id, and a stale id renders as literal text, not an image.
+ */
+export const QUICK_WIN_EMOJI_MAP = [
+  { re: /\bpass\s*go\b/i, emoji: "<:pass_go:1546142188684054668>" },
+  { re: /\bcommunity\s*chest\b/i, emoji: "<:community_chest:1546142038159003658>" },
+  { re: /\bchance\b/i, emoji: "<:chance:1546141587636097134>" },
+  { re: /\butilit(?:y|ies)\b/i, emoji: "<:utility:1546142624086229052>" },
+  { re: /\blandmark/i, emoji: "<:upgrade_landmark:1546141818259771513>" },
+  { re: /\bshut\s*down/i, emoji: "<:shut_down:1546142321136111666>" },
+  { re: /\bheist/i, emoji: "<:bank_heist:1546143364775411872>" },
+  { re: /\bsticker/i, emoji: "<:collect_sticker:1546142469899554867>" },
+  { re: /\bcash\b/i, emoji: "<:cash:1537096697572892793>" },
+  { re: /\broll/i, emoji: "<:roll:1546140812193042453>" },
+];
+
+/**
+ * The emoji for a Quick Wins task, or a plain "•" bullet when nothing matches.
+ * @param {string} task
+ * @returns {string}
+ */
+export function pickQuickWinEmoji(task) {
+  const found = QUICK_WIN_EMOJI_MAP.find(({ re }) => re.test(task));
   return found ? found.emoji : "•";
 }
