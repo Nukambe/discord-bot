@@ -6,6 +6,25 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `/update` (admin only) — checks GitHub for a newer MogoBot release and, if
+  there is one, downloads it, swaps the exe's files in place, logs the bot out
+  and relaunches the new build in its own console window, so an update no longer
+  needs someone at the machine to close and reopen the app. `check-only: true`
+  just reports the installed and latest versions. Running from source it reports
+  there's nothing to update. `selfUpdate.js` was split into `checkForUpdate` /
+  `installUpdate` / `relaunch` so the launch-time check and the command share
+  one implementation.
+
+### Fixed
+- Future-events posts tagged `blocks-boutique` now route to the special-events
+  channel with the Blocks Boutique emoji around the title, instead of falling
+  through to the unrouted default with a bare title.
+- Future-events posts whose in-article images have no `editorial-image` class
+  (the Blocks Boutique guide wraps each one in a plain `<figure>`) no longer
+  post with only the hero image: any full-size `<figure>` image inside the
+  article body is picked up as well.
+
 ### Changed
 - Daily schedule post reformatted: each event is a bold emoji + name line with
   Start/End/Duration bullets underneath in the short `Sep 6, 4:00 PM` form (no

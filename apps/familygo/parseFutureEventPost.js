@@ -26,9 +26,13 @@ export function parseFutureEventPost(html, opts = {}) {
   const publishDate = readPublishDate($, article);
   const heroImage = extractImageUrl(article?.image) || $('meta[property="og:image"]').attr("content") || null;
 
+  // Most posts tag their in-article images `img.editorial-image`, but some (the Blocks
+  // Boutique guide) drop the class and just wrap each full-size image in a <figure> inside
+  // the article body, so also accept those. The union is deduped by src, and the
+  // `.article-content` scope keeps the small reward-breakdown icons out.
   const editorialImages = [
     ...new Set(
-      $("img.editorial-image")
+      $("img.editorial-image, .article-content figure img")
         .toArray()
         .map((el) => $(el).attr("src"))
         .filter(Boolean)

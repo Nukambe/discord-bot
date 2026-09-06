@@ -39,6 +39,10 @@ const CATEGORY_ROUTES = {
     channelId: SPECIAL_EVENTS_CHANNEL_ID,
     emoji: "<:AdventureEvent_Icon_Commodity:1489742463345234091>",
   },
+  "blocks-boutique": {
+    channelId: SPECIAL_EVENTS_CHANNEL_ID,
+    emoji: "<:blocks_boutique:1529168959092424901>",
+  },
   "golden-blitz": {
     channelId: GOLDEN_BLITZ_CHANNEL_ID,
     emoji: "<:GoldenBlitz:1437570226966495373>",

@@ -16,6 +16,7 @@ import ping from "./ping.js";
 import postDaily from "./postDaily.js";
 import skip from "./skip.js";
 import stickerRequest from "./sticker-request.js";
+import update from "./update.js";
 import weeklyPredictions from "./weekly-predictions.js";
 
 export const staticCommands = [
@@ -31,5 +32,6 @@ export const staticCommands = [
   postDaily,
   skip,
   stickerRequest,
+  update,
   weeklyPredictions,
 ];
