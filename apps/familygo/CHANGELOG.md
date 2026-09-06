@@ -6,6 +6,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- `/dump-logs` — posts the process's console history (captured into an
+  in-memory ring buffer by `logBuffer.js`, hooked into stdout/stderr as the
+  first import of both `launch.js` and `index.js`) plus the current db state as
+  file attachments to the hardcoded diagnostics channel `1437862445266895001`.
+  The packaged .exe writes no log file, so this is the only way to get history
+  off the user's machine; the capture only covers the current process run.
+
 ### Fixed
 - Free dice links are no longer re-posted under a new URL. monopolygo.wiki wraps
   Scopely's links in its own shortener and mints a fresh slug whenever it re-lists a

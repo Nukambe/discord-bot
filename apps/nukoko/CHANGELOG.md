@@ -7,6 +7,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **LAST GAME Aomine** added to the PF roster (`roster.js`) — picked up
+  automatically by `/random-character` and `/builds`.
+- `/balls show|add|remove` — user-submitted ball images, stored the same way as
+  builds (`ballsDb.js`, same channel under a separate `BALLS_DB:` index) but
+  keyed by the user who added them. `/balls show` looks a user up by their
+  saved name (autocompleted) — no @-mention needed. Max 10 balls per user;
+  removal is by ID and restricted to your own. Both index scans now page up to
+  500 messages deep so neither db's traffic can bury the other's index.
 - `/builds show|add|remove` — user-submitted build screenshots, stored in a
   dedicated Discord channel (`buildsDb.js`). Images are re-posted by the bot so
   the record points at a message it owns; the index is a JSON attachment on the

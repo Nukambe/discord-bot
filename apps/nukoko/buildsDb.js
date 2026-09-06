@@ -21,8 +21,14 @@ import { AttachmentBuilder, ChannelType } from "discord.js";
 const BUILDS_CHANNEL_ID = "1539816317001933061";
 const DB_MARKER = "BUILDS_DB:";
 const DB_FILENAME = "builds-db.json";
-/** How far back to look for the index if something else posted after it. */
-const DB_SCAN_LIMIT = 25;
+/**
+ * Page size / total depth of the index scan. The balls db (ballsDb.js) shares
+ * this channel under its own marker, and each of its writes pushes this index
+ * further down the channel, so the scan pages beyond a single fetch — losing
+ * sight of the index would silently orphan every image it tracks.
+ */
+const DB_SCAN_PAGE = 100;
+const DB_SCAN_MAX = 500;
 
 export const MAX_BUILDS_PER_CHARACTER = 10;
 /** Re-uploading is capped well under Discord's own limit for a clear error. */
@@ -57,11 +63,23 @@ async function fetchBuildsChannel(client) {
 const emptyDb = () => ({ builds: {}, ts: Date.now() });
 
 async function findDbMessage(channel) {
-  const msgs = await channel.messages.fetch({ limit: DB_SCAN_LIMIT }).catch(() => null);
-  if (!msgs || msgs.size === 0) return null;
-  // fetch() returns newest-first, and every write re-posts the index, so the
-  // first marker message is the current one.
-  return [...msgs.values()].find((m) => m.content?.startsWith(DB_MARKER)) ?? null;
+  let before;
+  for (let scanned = 0; scanned < DB_SCAN_MAX; ) {
+    const msgs = await channel.messages
+      .fetch({ limit: DB_SCAN_PAGE, ...(before ? { before } : {}) })
+      .catch(() => null);
+    if (!msgs || msgs.size === 0) return null;
+
+    // fetch() returns newest-first, and every write re-posts the index, so the
+    // first marker message is the current one.
+    const hit = [...msgs.values()].find((m) => m.content?.startsWith(DB_MARKER));
+    if (hit) return hit;
+
+    scanned += msgs.size;
+    if (msgs.size < DB_SCAN_PAGE) return null;
+    before = msgs.last().id;
+  }
+  return null;
 }
 
 /**

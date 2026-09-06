@@ -2,6 +2,7 @@
 // check before the real app ever loads, so an update never races against an
 // already-logged-in Discord client. index.js is only imported — starting the
 // bot — when no update was installed this launch.
+import "./logBuffer.js"; // must be first so the self-update logs are captured too
 import "dotenv/config";
 import { checkForUpdatesAndMaybeRestart } from "./selfUpdate.js";
 

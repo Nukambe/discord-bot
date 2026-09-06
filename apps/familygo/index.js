@@ -1,3 +1,4 @@
+import "./logBuffer.js"; // must be first so every subsequent import's output is captured
 import { Client, Collection, GatewayIntentBits, Events } from "discord.js";
 import cron from 'node-cron';
 import { formatDateSlug, toEstDateString, toEstTimeParts } from "../../util/dateUtils.js";

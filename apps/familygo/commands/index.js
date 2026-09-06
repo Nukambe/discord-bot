@@ -5,6 +5,7 @@
 // This static list lets the packaged build reach the same command modules
 // through an ordinary static import, which bundlers can inline.
 import config from "./config.js";
+import dumpLogs from "./dump-logs.js";
 import freeDice from "./free-dice.js";
 import futureEvents from "./future-events.js";
 import giftRotation from "./giftRotation.js";
@@ -19,6 +20,7 @@ import weeklyPredictions from "./weekly-predictions.js";
 
 export const staticCommands = [
   config,
+  dumpLogs,
   freeDice,
   futureEvents,
   giftRotation,
