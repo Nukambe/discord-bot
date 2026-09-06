@@ -95,7 +95,7 @@ export function formatWeeklyPredictions(events, weekDates) {
       // event_key is included in the emoji lookup as a fallback spelling ("PrizeDrop",
       // "WheelBoost", ...) for when a title doesn't match any pattern on its own.
       const emoji = pickEmoji(`${ev.title} ${ev.eventKey}`);
-      const duration = ev.durationMinutes ? ` (${ev.durationMinutes} Mins)` : "";
+      const duration = ev.durationMinutes ? ` (${ev.durationMinutes} M)` : "";
       const window = `${toEstShortDateTime(ev.start)} - ${toEstShortDateTime(ev.end)}`;
       return `> ${emoji} **${ev.title}**${duration} \`${window}\``;
     });
