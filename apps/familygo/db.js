@@ -32,6 +32,11 @@ export const defaultDb = () => ({
     futureEvents: {}, // { [category tag or "general"]: urlKey() of its most recent post }
     weekly: null,     // ET date ("YYYY-MM-DD") of the Monday whose week was last posted
                       // by the weekly predictions job (postWeeklyPredictions.js)
+    spoilers: {},     // { [wiki collectible category key]: itemIds that were on page 1 of that
+                      // category at the end of the last check (postCollectibleSpoilers.js).
+                      // A missing key means that category has never been checked, which is
+                      // what triggers its one-time silent seed; the ids are how "new" is
+                      // decided at all, since the wiki dates none of its collectibles.
   },
   ts: Date.now(),
 });

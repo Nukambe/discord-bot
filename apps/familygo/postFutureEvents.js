@@ -66,7 +66,7 @@ const ALL_TARGET_CHANNEL_IDS = [
  * FUTURE_EVENTS_CHANNEL_ID.
  *
  * The window covers two days rather than just "yesterday" so that the scheduled midnight run
- * (startFutureEventsCron in index.js) and any manual /future-events run overlap instead of
+ * (the 'future-events' job in index.js) and any manual /future-events run overlap instead of
  * each carving out a separate day — the wiki publishes preview articles late in the Eastern
  * evening (the Roll Treasures guide went up at 23:46 EST), which is exactly where a
  * single-day window has its seam. Deduping on the post URL against what's already in the

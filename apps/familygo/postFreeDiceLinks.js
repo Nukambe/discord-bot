@@ -35,7 +35,7 @@ const FREE_DICE_STATE_LIMIT = 10;
  * to Scopely's own mply.io link (that is what gets posted) and to the campaign id behind
  * it, either of which identifies the reward no matter how many slugs the wiki spends on it.
  *
- * Called from the daily 7:30pm cron (startFreeDiceCron in index.js) and the manual
+ * Called from the daily 7:30pm cron (the 'free-dice' job in index.js) and the manual
  * /free-dice command, which exists to catch up on any links a scheduled run missed —
  * the overlap-plus-dedupe design is what makes re-running it at any time safe.
  *

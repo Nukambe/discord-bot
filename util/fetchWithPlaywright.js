@@ -24,6 +24,27 @@ function bundledChromePath() {
  * @returns {Promise<string>} The rendered page HTML.
  */
 export async function fetchWithPlaywright(url, opts = {}) {
+  const [html] = await fetchManyWithPlaywright([url], opts);
+  if (html == null) throw new Error(`[Playwright] Failed to fetch ${url}`);
+  return html;
+}
+
+/**
+ * Fetch several pages through a single browser launch, one tab reused for all of them.
+ *
+ * Every launch opens a *visible* Chrome window on the packaged desktop build (Cloudflare
+ * rejects headless, see below), so a caller that needs three sibling pages should ask for
+ * them together rather than calling fetchWithPlaywright three times — one window popping up
+ * instead of three is the whole point.
+ *
+ * Unlike fetchWithPlaywright, a page that fails yields null in its slot rather than
+ * throwing, so one bad URL doesn't cost the caller the pages that did load.
+ *
+ * @param {string[]} urls - Pages to fetch, in order.
+ * @param {{ waitForSelector?: string }} [opts] - Applied to every page (see fetchWithPlaywright).
+ * @returns {Promise<Array<string|null>>} Rendered HTML per input url, same order; null on failure.
+ */
+export async function fetchManyWithPlaywright(urls, opts = {}) {
   const { waitForSelector = null } = opts;
   console.log('[Playwright] Launching browser...');
   const browser = await chromium.launch({
@@ -46,14 +67,22 @@ export async function fetchWithPlaywright(url, opts = {}) {
   const page = await context.newPage();
 
   try {
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    if (waitForSelector) {
-      await page.waitForSelector(waitForSelector, { timeout: 15000 }).catch(() => {});
-    } else {
-      await page.waitForTimeout(3000); // wait a bit for dynamic content
+    const results = [];
+    for (const url of urls) {
+      try {
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        if (waitForSelector) {
+          await page.waitForSelector(waitForSelector, { timeout: 15000 }).catch(() => {});
+        } else {
+          await page.waitForTimeout(3000); // wait a bit for dynamic content
+        }
+        results.push(await page.content());
+      } catch (err) {
+        console.error(`[Playwright] Failed to load ${url}:`, err?.message || err);
+        results.push(null);
+      }
     }
-    const html = await page.content();
-    return html;
+    return results;
   } finally {
     await browser.close();
   }

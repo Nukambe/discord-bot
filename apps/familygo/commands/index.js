@@ -15,6 +15,7 @@ import openVault from "./openVault.js";
 import ping from "./ping.js";
 import postDaily from "./postDaily.js";
 import skip from "./skip.js";
+import spoilers from "./spoilers.js";
 import stickerRequest from "./sticker-request.js";
 import update from "./update.js";
 import weeklyPredictions from "./weekly-predictions.js";
@@ -31,6 +32,7 @@ export const staticCommands = [
   ping,
   postDaily,
   skip,
+  spoilers,
   stickerRequest,
   update,
   weeklyPredictions,

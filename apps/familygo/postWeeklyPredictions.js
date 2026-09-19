@@ -113,7 +113,7 @@ export function formatWeeklyPredictions(events, weekDates) {
  *
  * Returns whether this week's post is settled: true when it just went out (or already
  * had), false when the calendar doesn't cover the week yet or couldn't be fetched — the
- * caller's retry cron (startWeeklyPredictionsCron in index.js) keeps trying on false.
+ * caller's retry window (the 'weekly-predictions' job in index.js) keeps trying on false.
  *
  * Dedupe is two-layered like the other jobs: db.lastPosts.weekly holds the target
  * Monday's date, and the channel scan looks for that Monday's day-header text — both
