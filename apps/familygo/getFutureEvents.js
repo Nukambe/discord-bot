@@ -6,6 +6,9 @@ import { toEstDateString } from "../../util/dateUtils.js";
 const MOGO_WIKI_NEWS_URL = "https://monopolygo.wiki/news";
 const BASE_URL = "https://monopolygo.wiki";
 
+// Posts whose title names the wiki itself are site announcements, not events.
+const SITE_ANNOUNCEMENT_TITLE_RE = /mogo\s*wiki/i;
+
 /**
  * Fetch the Monopoly GO! Wiki "News" index page and (optionally) save its rendered HTML.
  *
@@ -37,7 +40,8 @@ export async function getMogoWikiNews(opts = {}) {
  * Parse the news index HTML into post cards published on `targetEstDates`
  * (America/New_York, "YYYY-MM-DD"), excluding "Today's Events" daily posts and the
  * "Free Dice Links Today" post — both are handled by the separate daily-post flow
- * (see postEventToDiscord / postNewFreeDiceLinks in index.js).
+ * (see postEventToDiscord / postNewFreeDiceLinks in index.js) — and excluding posts about
+ * the wiki itself (anything with "MOGO Wiki" in the title), which are site news, not events.
  *
  * Each card is a `<h2><a href="...">Title</a></h2>` with a sibling `<time datetime="...">`.
  *
@@ -75,6 +79,14 @@ export function getFutureEventPosts(html, targetEstDates, opts = {}) {
 
     if (!wanted.has(toEstDateString(publishDate))) return;
 
+    // The wiki also publishes posts about the wiki itself ("MOGO Wiki is now...",
+    // site announcements, etc.) — they aren't events, so they never get posted.
+    const title = $a.text().replace(/\s+/g, " ").trim();
+    if (SITE_ANNOUNCEMENT_TITLE_RE.test(title)) {
+      if (debug) console.log(`[getFutureEventPosts] skipping site announcement: ${title}`);
+      return;
+    }
+
     let url;
     try {
       url = new URL(href, BASE_URL).toString();
@@ -83,7 +95,7 @@ export function getFutureEventPosts(html, targetEstDates, opts = {}) {
       return;
     }
 
-    posts.push({ url, title: $a.text().replace(/\s+/g, " ").trim(), publishDate });
+    posts.push({ url, title, publishDate });
   });
 
   if (debug) {

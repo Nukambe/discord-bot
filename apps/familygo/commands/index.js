@@ -8,6 +8,7 @@ import config from "./config.js";
 import dumpLogs from "./dump-logs.js";
 import freeDice from "./free-dice.js";
 import futureEvents from "./future-events.js";
+import giftPool from "./gift-pool.js";
 import giftRotation from "./giftRotation.js";
 import highRoller from "./highRoller.js";
 import next from "./next.js";
@@ -25,6 +26,7 @@ export const staticCommands = [
   dumpLogs,
   freeDice,
   futureEvents,
+  giftPool,
   giftRotation,
   highRoller,
   next,

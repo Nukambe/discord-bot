@@ -3,23 +3,27 @@ import { getTodayPrettyDate, getTomorrowPrettyDate } from "../../util/dateUtils.
 import { getDb, defaultDb } from "./db.js";
 import "dotenv/config";
 
-const POOL = [
-  { id: process.env.ROLLER_USER_ID, channel: process.env.ROLLER_CHANNEL_ID, name: "DaRoller" },
-  { id: process.env.WRECKER_USER_ID, channel: process.env.WRECKER_CHANNEL_ID, name: "DaWrecker" },
-  { id: process.env.BUILDER_USER_ID, channel: process.env.BUILDER_CHANNEL_ID, name: "DaBuilder" },
-  { id: process.env.COLLECTOR_USER_ID, channel: process.env.COLLECTOR_CHANNEL_ID, name: "DaCollector" },
-  // { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
-];
+/**
+ * Read the giftee (selectable) and gifter (always gifts, never selected) rosters from the
+ * db, deduped and with incomplete entries dropped. Falls back to the seeded defaults per
+ * list, so a db written before the rosters moved in there still rotates the original pool;
+ * an explicitly empty list is honoured, since that's someone having removed everyone.
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<{ giftees: Array<{id: string, channel: string, name?: string}>, gifters: Array<{id: string, channel: string, name?: string}> }>}
+ */
+export async function getGiftPools(client) {
+  return poolsFromDb((await getDb(client)) ?? defaultDb());
+}
 
-const EXEMPT_POOL = [
-  { id: "oly-lifts", channel: process.env.OLY_CHANNEL_ID, name: "OlyLifts" },
-  { id: "mech-e", channel: process.env.MECH_CHANNEL_ID, name: "MechE" },
-  { id: "majestic-ruby-71", channel: process.env.MAJESTIC_CHANNEL_ID, name: "MajesticRuby71" },
-  { id: process.env.GAMER_USER_ID, channel: process.env.GAMER_CHANNEL_ID, name: "DaGamer" },
-  { id: "april-love", channel: "1444766178487832627", name: "AprilLove" },
-  { id: "prof-cousin", channel: "1447724785164484720", name: "ProfCousin" },
-  { id: process.env.ANCHOR_USER_ID, channel: process.env.ANCHOR_CHANNEL_ID, name: "DaAnchor" },
-];
+/** getGiftPools' body, split out so a caller that already has the db doesn't refetch it. */
+export function poolsFromDb(db) {
+  const rotation = db?.giftRotation ?? {};
+  const seed = defaultDb().giftRotation;
+  return {
+    giftees: dedupePool(Array.isArray(rotation.giftees) ? rotation.giftees : seed.giftees),
+    gifters: dedupePool(Array.isArray(rotation.gifters) ? rotation.gifters : seed.gifters),
+  };
+}
 
 /**
  * Set a flag to skip the next scheduled gift rotation.
@@ -61,10 +65,30 @@ export async function shouldSkipRotation(client) {
 }
 
 /**
+ * Read the rotation cycle STATE (who's left to be picked this cycle) from the rotation
+ * channel's last message, normalized against the current giftee roster. Used by
+ * /gift-pool view to show the live cycle alongside the rosters.
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<{ remaining: string[], skip: boolean }>}
+ */
+export async function getRotationState(client) {
+  const { giftees } = await getGiftPools(client);
+  const gifteeIds = new Set(giftees.map(g => g.id));
+
+  const rotChan = await client.channels.fetch(process.env.GIFT_ROTATION_CHANNEL_ID).catch(() => null);
+  if (!isTextish(rotChan)) return { remaining: [...gifteeIds], skip: false };
+
+  const lastState = parseStateFromMessage((await fetchLastMessage(rotChan))?.content);
+  const remaining = (lastState?.remaining ?? []).filter(id => gifteeIds.has(id));
+  // An empty (or fully stale) remaining list means the cycle resets on the next pick.
+  return { remaining: remaining.length ? remaining : [...gifteeIds], skip: lastState?.skip === true };
+}
+
+/**
  * Post a new gift rotation pick.
- * - Only POOL members can be selected.
- * - Gifters = (POOL minus chosen) + EXEMPT_POOL.
- * - Rotation STATE only tracks POOL.
+ * - Only giftees can be selected.
+ * - Gifters this round = (giftees minus chosen) + the gifter roster.
+ * - Rotation STATE only tracks giftees.
  * @param {import('discord.js').Client} client
  * @param {{ debug?: boolean }} [opts]
  */
@@ -73,38 +97,41 @@ export async function runGiftRotation(client, opts = {}) {
   const title = "🎁 Gift Rotator";
   const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
 
-  const db = (await getDb(client).catch(() => null)) ?? defaultDb();
+  // Not swallowed: the rosters live in the db now, so a db that can't be read must abort
+  // the rotation rather than quietly fall back to the seeded pool and post the wrong one.
+  const db = (await getDb(client)) ?? defaultDb();
   const gifs = db.giftRotation?.gifs?.length ? db.giftRotation.gifs : defaultDb().giftRotation.gifs;
 
   // 1) Validate inputs
-  const validPool = dedupePool(POOL);               // selectable
-  const exemptPool = dedupePool(EXEMPT_POOL);       // always gift, never selected
-  if (validPool.length === 0) throw new Error("POOL is empty. Provide users with { id, channel }.");
+  const { giftees: validPool, gifters: exemptPool } = poolsFromDb(db);
+  if (validPool.length === 0) {
+    throw new Error("Giftee roster is empty. Add someone with /gift-pool add.");
+  }
 
   // 2) Resolve rotation/log channel
   const rotChan = await client.channels.fetch(rotationChannelId).catch(() => null);
   if (!isTextish(rotChan)) throw new Error(`Rotation channel ${rotationChannelId} not found or not a text/thread channel.`);
   const guild = rotChan.guild ?? null;
 
-  // 3) Load state and normalize against current POOL (only POOL matters here)
+  // 3) Load state and normalize against the current giftee roster (only giftees cycle)
   const lastMsg = await fetchLastMessage(rotChan);
   const lastState = parseStateFromMessage(lastMsg?.content);
 
-  const poolIds = new Set(validPool.map(x => x.id)); // ONLY POOL in the cycle
+  const poolIds = new Set(validPool.map(x => x.id)); // ONLY giftees are in the cycle
   let remaining = (lastState?.remaining ?? []).filter(id => poolIds.has(id));
   if (remaining.length === 0) remaining = [...poolIds];
 
-  // 4) Choose from POOL remaining
+  // 4) Choose from the giftees left this cycle
   const chosenId = randomFromArray(remaining);
   remaining = remaining.filter(id => id !== chosenId);
 
   // 5) Build references
   const chosen = validPool.find(p => p.id === chosenId);
-  if (!chosen) throw new Error("Chosen user not found in POOL after normalization.");
+  if (!chosen) throw new Error("Chosen user not found in the giftee roster after normalization.");
 
   const chosenRef = await formatUserRef(chosen, guild);
 
-  // Gifters = (POOL minus chosen) + EXEMPT_POOL
+  // Gifters this round = (giftees minus chosen) + the gifter roster
   const gifters = [
     ...validPool.filter(p => p.id !== chosenId),
     ...exemptPool,
@@ -113,7 +140,7 @@ export async function runGiftRotation(client, opts = {}) {
   const giftersRefs = await Promise.all(gifters.map(p => formatUserRef(p, guild)));
   const giftersLine = giftersRefs.join(", ") || "—";
 
-  // 6) Post rotation log with updated STATE (POOL-only)
+  // 6) Post rotation log with updated STATE (giftees only)
   const state = { remaining, pool: [...poolIds], ts: Date.now() };
   const remainingRefs = await Promise.all(
     remaining.map(id => {
@@ -129,7 +156,7 @@ export async function runGiftRotation(client, opts = {}) {
   const logLines = [
     title,
     `**Chosen:** ${chosenRef}`,
-    `**Remaining this cycle (POOL):** ${remainingLine}`,
+    `**Remaining this cycle (giftees):** ${remainingLine}`,
     `**Exempt gifters (not selectable):** ${exemptLine}`,
     "",
     `Debug mode: ${debug ? "✅ ON (not posting in user channel)" : "❌ OFF"}`,
