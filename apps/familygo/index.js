@@ -427,28 +427,23 @@ const JOBS = [
     },
 
     /**
-     * Wiki news sweep: once at midnight ET, sweeping the news index for posts
-     * published today or yesterday and excluding the daily "Today's Events"
-     * posts.
+     * Wiki news sweep: once nightly at 7:30pm ET in the shared slot, after the
+     * jobs above. Posts every article the news index lists after the wiki's
+     * newest "Today's Events" post that the previous run stopped at, so a day's
+     * worth is measured by the wiki's own day markers rather than by calendar
+     * dates (see selectPostsSinceMarker in getFutureEvents.js).
      *
      * Deliberately once a day, not a repeating sweep: run count is a UX budget
      * on the packaged desktop build, where each run opens a visible browser
-     * window.
-     *
-     * The cost of that is a real race. The wiki publishes preview articles late
-     * in the Eastern evening — the Roll Treasures guide went up at 23:46 EST —
-     * leaving the news index minutes to list them before the single run that
-     * will ever look. A post that misses that window, or a Cloudflare fetch that
-     * fails, is skipped permanently, since tomorrow's run asks about a different
-     * day. Shifting this an hour or two later is the cheap mitigation:
-     * "yesterday" still covers the whole evening, but the index has had time to
-     * settle.
+     * window. Anything the wiki publishes after 7:30pm is picked up by the next
+     * evening's run (the cutoff only moves when a run resolves everything), or
+     * sooner by a manual /future-events, which posts only what this run didn't.
      */
     {
         name: "future-events",
-        slots: () => atTime(0, 0),
+        slots: () => atTime(19, 30),
         run: async ({ client }) => {
-            console.log("📰 Running future-events post...");
+            console.log("📰 Running nightly 7:30pm wiki news sweep...");
             await postFutureEventsToDiscord(client);
         },
     },

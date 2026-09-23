@@ -6,6 +6,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+- Wiki news sweep (`future-events`) moved from midnight to 7:30pm ET, in the
+  shared slot with the other nightly jobs, and no longer decides what's new by
+  calendar date. It uses the wiki's own "Today's Events (<date>)" posts as day
+  markers: every article newer than the marker the previous run stopped at is
+  a candidate, the ones that run already searched are skipped, and the marker
+  only advances once every candidate resolved (`db.lastPosts.newsSweep`). So a
+  manual `/future-events` after the cron posts only what the cron didn't, and
+  an article that couldn't be fetched is retried the next evening instead of
+  being lost. All candidate pages load through one browser window.
+- Future-events posts now carry every image in the article: standalone images
+  stack under the hero across as many messages as needed (Discord allows ten
+  embeds per message; the old post kept nine and dropped the rest), and each
+  in-article gallery — an album preview's wheel of sticker sets — becomes its
+  own message headed by the gallery's `## heading` with the images attached so
+  they cluster into a grid.
+- Events with no emoji in `EMOJI_MAP` render with the `:new_events:` placeholder
+  in the daily schedule and weekly predictions instead of a bare "•", so a
+  brand-new Scopely event still gets an icon until a dedicated one is added.
+
+### Fixed
+- An article the wiki republishes at a new `-2` URL (the full Monster Mash album
+  preview) is no longer skipped as "already posted": the wiki copies the old
+  article's metadata across, so its JSON-LD `url` named the old slug and matched
+  the dedupe record. A post's identity is now the news-index href.
+
 ### Added
 - `/update` (admin only) — checks GitHub for a newer MogoBot release and, if
   there is one, downloads it, swaps the exe's files in place, logs the bot out

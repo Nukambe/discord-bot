@@ -61,7 +61,10 @@ export const defaultDb = () => ({
     daily: null,      // dateSlug of the most recent daily events post
     freeDice: [],     // one key per recently posted free-dice link: its campaign id, or
                       // urlKey() of the resolved claim link (see resolveRewardLink.js)
-    futureEvents: {}, // { [category tag or "general"]: urlKey() of its most recent post }
+    newsSweep: {      // Where the wiki news sweep (postFutureEvents.js) left off:
+      cutoff: null,   //   ISO time of the "Today's Events" post it measures from, and
+      searched: [],   //   [{ key: urlKey(), at: ISO }] posts newer than that it already handled
+    },
     weekly: null,     // ET date ("YYYY-MM-DD") of the Monday whose week was last posted
                       // by the weekly predictions job (postWeeklyPredictions.js)
     spoilers: {},     // { [wiki collectible category key]: itemIds that were on page 1 of that
@@ -225,7 +228,7 @@ export async function getLastPosts(client) {
 /**
  * Merge `patch` into db.lastPosts and post the result as a new db message.
  * Values in `patch` replace their key wholesale — callers maintaining a nested
- * object (futureEvents) pass the already-merged object.
+ * object (newsSweep, spoilers) pass the already-merged object.
  *
  * Deliberately does NOT fire onDbChange listeners: those restart the schedule
  * crons, and post-state writes happen after every post — nothing about the

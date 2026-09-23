@@ -52,13 +52,20 @@ export const EMOJI_MAP = [
 ];
 
 /**
- * The emoji for an event name, or a plain "•" bullet when nothing matches.
+ * Placeholder for any event Scopely ships that has no entry in EMOJI_MAP yet, so a
+ * brand-new event still gets an icon (rather than a bare "•") until someone adds a
+ * dedicated one above.
+ */
+export const NEW_EVENT_EMOJI = "<:new_events:1551600632950034433>";
+
+/**
+ * The emoji for an event name, or NEW_EVENT_EMOJI when nothing matches.
  * @param {string} name
  * @returns {string}
  */
 export function pickEmoji(name) {
   const found = EMOJI_MAP.find(({ re }) => re.test(name));
-  return found ? found.emoji : "•";
+  return found ? found.emoji : NEW_EVENT_EMOJI;
 }
 
 /**

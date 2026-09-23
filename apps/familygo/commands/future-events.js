@@ -4,7 +4,7 @@ import { postFutureEventsToDiscord } from "../postFutureEvents.js";
 export default {
   data: new SlashCommandBuilder()
     .setName("future-events")
-    .setDescription("Post today's/yesterday's Monopoly GO Wiki news posts (excluding daily events).")
+    .setDescription("Post any Monopoly GO Wiki news since the last Today's Events post that isn't posted yet.")
     .addBooleanOption((opt) =>
       opt.setName("debug").setDescription("Post to the test channel instead of the live channel")
     ),
