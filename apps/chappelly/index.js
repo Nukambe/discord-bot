@@ -7,7 +7,8 @@ import { deployCommands, COMMANDS_DIR } from "./deploy-commands.js";
 import { startScheduler } from "./cronScheduler.js";
 import { cronSlots } from "./schedule.js";
 import { initEnv, fetchEnvChannel, onEnvChange, defaultEnv } from "./env.js";
-import { runReminder, handleReminderButton, BUTTON_PREFIX } from "./jobs/reminder.js";
+import { handleReminderButton, BUTTON_PREFIX } from "./jobs/reminder.js";
+import { runJob, jobTypeOf } from "./jobs/registry.js";
 import { handleCronModalSubmit, MODAL_PREFIX } from "./commands/cron.js";
 
 /**
@@ -25,14 +26,18 @@ import { handleCronModalSubmit, MODAL_PREFIX } from "./commands/cron.js";
 /**
  * Turn env.crons into scheduler jobs. Disabled crons are left out entirely;
  * a malformed one throws from slots() and the scheduler logs and skips it.
+ *
+ * Which job an entry runs is data too: `job` names a runner in the registry
+ * ("reminder" when unset, "weather" for a forecast post), so adding a kind of
+ * post means a new module there, not a change here.
  */
 const buildJobs = (env) =>
   Object.entries(env.crons ?? {})
     .filter(([, cron]) => cron && typeof cron === "object" && cron.enabled !== false)
     .map(([id, cron]) => ({
-      name: id,
+      name: `${id} (${jobTypeOf(cron)})`,
       slots: () => cronSlots(cron),
-      run: (ctx) => runReminder(ctx, id),
+      run: (ctx) => runJob(ctx, id, cron),
     }));
 
 const ephemeralError = async (interaction, content) => {

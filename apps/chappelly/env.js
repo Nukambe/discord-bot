@@ -36,11 +36,15 @@ export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
 /**
  * Seed env, posted the first time the channel is empty. Cron entries are keyed
  * by id under `crons`; each is
- *   { enabled, times: ["HH:mm" ET], days: [0-6, 0 = Sun], channel, message, gif, mentions, button,
- *     everyDays?, lastRun? }
+ *   { enabled, job?, times: ["HH:mm" ET], days: [0-6, 0 = Sun], channel, message, gif, mentions,
+ *     button, everyDays?, lastRun?, location? }
  * where `mentions` lists env key names (KING_USER_ID) or raw user ids, an
  * empty `channel` falls back to REMINDER_CHANNEL_ID, and `gif` (a URL) goes on
  * its own line under the message so Discord embeds it.
+ *
+ * `job` picks what the entry posts (see jobs/registry.js): "reminder" when
+ * unset — message, gif and confirm button — or "weather", which posts today's
+ * forecast for `location` (or WEATHER_LOCATION) and ignores gif/button.
  *
  * `everyDays` turns the cron into an interval: its times/days still decide
  * when it *may* fire, but it only posts once `everyDays` days have passed
@@ -51,6 +55,11 @@ export const defaultEnv = () => ({
   KING_USER_ID: "",
   QUEEN_USER_ID: "",
   REMINDER_CHANNEL_ID: "",
+  // Where the weather crons forecast: a place name ("Rock Hill, SC") or
+  // "latitude,longitude" when the geocoder can't find it. WEATHER_UNITS is
+  // "imperial" (default) or "metric".
+  WEATHER_LOCATION: "",
+  WEATHER_UNITS: "imperial",
   crons: {
     "neema-pill": {
       enabled: true,
@@ -81,6 +90,18 @@ export const defaultEnv = () => ({
       message: "",
       gif: "https://klipy.com/gifs/dudu-massage-bubu-ass-oh-yeah-baby",
       mentions: ["KING_USER_ID", "QUEEN_USER_ID"],
+      button: "",
+    },
+    weather: {
+      enabled: true,
+      job: "weather",
+      times: ["07:00"],
+      days: [...ALL_DAYS],
+      channel: "",
+      message: "Good morning! Here's today's weather:",
+      // Blank = wherever WEATHER_LOCATION points.
+      location: "",
+      mentions: [],
       button: "",
     },
   },

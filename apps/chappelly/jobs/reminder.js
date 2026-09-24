@@ -1,20 +1,19 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { currentEnv, recordCronRun } from "../env.js";
-import { normalizeEveryDays, daysBetween } from "../schedule.js";
-import { toEstDateString } from "../../../util/dateUtils.js";
+import { prepareRun, resolveChannel, resolveMentions, mentionLine } from "./common.js";
 
 /**
- * The "reminder" cron: post a message (and/or a gif) mentioning some people,
- * optionally with a single confirmation button one of them presses to mark it
- * done. Every cron entry under env.crons is one of these (see defaultEnv in
- * env.js for the shape).
+ * The "reminder" cron — the default job type: post a message (and/or a gif)
+ * mentioning some people, optionally with a single confirmation button one of
+ * them presses to mark it done. A cron entry under env.crons is one of these
+ * unless its `job` says otherwise (see jobs/weather.js).
  *
  * A cron with `everyDays` is an interval: its scheduler slot still fires at
  * every configured time, but the post is gated on `everyDays` days having
- * passed since `lastRun`, and each post stamps lastRun with today. Gating on
- * "days since the last post" rather than a fixed modulus means a missed day
- * (bot down at 8am) posts at the next slot instead of waiting a whole cycle,
- * and /cron reset is just "stamp lastRun with today".
+ * passed since `lastRun` (see prepareRun), and each post stamps lastRun with
+ * today. Gating on "days since the last post" rather than a fixed modulus
+ * means a missed day (bot down at 8am) posts at the next slot instead of
+ * waiting a whole cycle, and /cron reset is just "stamp lastRun with today".
  *
  * The button's customId only carries the cron id — who may press it and what
  * "done" looks like are resolved from the live env at click time — so a
@@ -22,69 +21,28 @@ import { toEstDateString } from "../../../util/dateUtils.js";
  */
 
 export const BUTTON_PREFIX = "reminder-done:";
-const SNOWFLAKE = /^\d{17,20}$/;
 
 /**
- * A cron's `mentions` are env key names (KING_USER_ID) or raw user ids. Keys
- * whose env value is empty are dropped rather than mentioned as literal text.
- */
-export function resolveMentions(env, cron) {
-  const ids = (cron?.mentions ?? []).map((m) => {
-    const viaEnv = env?.[m];
-    return typeof viaEnv === "string" && viaEnv.trim() ? viaEnv.trim() : String(m).trim();
-  });
-  return [...new Set(ids.filter((id) => SNOWFLAKE.test(id)))];
-}
-
-export const resolveChannelId = (env, cron) =>
-  String(cron?.channel || env?.REMINDER_CHANNEL_ID || "").trim();
-
-/**
- * Post the reminder for cron `id`. Reads the cron from the cached live env
- * rather than the scheduler's ctx snapshot, because an interval cron's own
- * lastRun stamp is written silently (no schedule rebuild) and must be seen
- * by the very next slot.
+ * Post the reminder for cron `id`.
  *
  * `force` (the manual /cron run) bypasses the interval gate and does not stamp
  * lastRun, so a test post never shifts the real cadence.
  * @returns {Promise<import('discord.js').Message|null>} the posted message, or null if skipped
  */
 export async function runReminder({ client }, id, { force = false } = {}) {
-  const env = currentEnv();
-  const cron = env.crons?.[id];
-  if (!cron) {
-    console.warn(`⚠️ [chappelly] Cron "${id}" no longer exists, skipping.`);
-    return null;
-  }
+  const prepared = prepareRun(id, { force });
+  if (!prepared) return null;
+  const { env, cron, today, everyDays } = prepared;
 
-  const everyDays = normalizeEveryDays(cron.everyDays);
-  const today = toEstDateString(new Date());
-  if (everyDays && !force) {
-    const since = daysBetween(cron.lastRun, today);
-    if (since !== null && since < everyDays) {
-      console.log(`⏭️ [chappelly] Cron "${id}": ${since}/${everyDays} day(s) since ${cron.lastRun}, not yet.`);
-      return null;
-    }
-  }
-
-  const channelId = resolveChannelId(env, cron);
-  if (!channelId) {
-    console.warn(`⚠️ [chappelly] Cron "${id}" has no channel and REMINDER_CHANNEL_ID is unset, skipping.`);
-    return null;
-  }
-  const channel = client.channels.cache.get(channelId)
-    ?? await client.channels.fetch(channelId).catch(() => null);
-  if (!channel?.isTextBased?.()) {
-    console.error(`💥 [chappelly] Cron "${id}": channel ${channelId} not found or not text-based.`);
-    return null;
-  }
+  const channel = await resolveChannel(client, env, cron, id);
+  if (!channel) return null;
 
   const mentions = resolveMentions(env, cron);
   if (mentions.length === 0) {
     console.warn(`⚠️ [chappelly] Cron "${id}" resolves to no mentions (KING_USER_ID/QUEEN_USER_ID unset?), posting anyway.`);
   }
 
-  const firstLine = [mentions.map((uid) => `<@${uid}>`).join(" "), String(cron.message ?? "").trim()]
+  const firstLine = [mentionLine(mentions), String(cron.message ?? "").trim()]
     .filter(Boolean)
     .join(" ");
   // The gif goes on its own line so Discord unfurls it under the text.
@@ -105,7 +63,7 @@ export async function runReminder({ client }, id, { force = false } = {}) {
     : [];
 
   const message = await channel.send({ content, components });
-  console.log(`📣 [chappelly] Posted reminder "${id}" to #${channel.name ?? channelId}`);
+  console.log(`📣 [chappelly] Posted reminder "${id}" to #${channel.name ?? channel.id}`);
   if (everyDays && !force) await recordCronRun(client, id, today);
   return message;
 }

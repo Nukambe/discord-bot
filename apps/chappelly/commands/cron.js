@@ -16,15 +16,17 @@ import {
   normalizeEveryDays,
   addDays,
 } from "../schedule.js";
-import { runReminder, resolveChannelId, resolveMentions } from "../jobs/reminder.js";
+import { resolveChannelId, resolveMentions } from "../jobs/common.js";
+import { runJob, jobTypeOf, JOB_TYPES, DEFAULT_JOB } from "../jobs/registry.js";
 import { toEstDateString } from "../../../util/dateUtils.js";
 
 /**
  * Form-driven editing of env.crons. A modal holds at most five text inputs, so
- * the cron's id, channel and interval travel as slash options (and ride along
- * in the modal's customId), and the modal itself takes times, days, message,
- * mentions and button label. The gif has its own subcommand since swapping it
- * is the common edit. Anything the form can't express is one
+ * the cron's id, channel, interval and job type travel as slash options (and
+ * ride along in the modal's customId), and the modal itself takes times, days,
+ * message, mentions and either a button label or — for a weather cron — the
+ * place to forecast. The gif has its own subcommand since swapping it is the
+ * common edit. Anything the form can't express is one
  * `/env set crons.<id>.<field>` away.
  */
 
@@ -53,7 +55,14 @@ const everyDaysOption = (opt) =>
     .setMaxValue(365)
     .setRequired(false);
 
-function buildCronModal(id, cron, channelId, everyDays) {
+const jobOption = (opt) =>
+  opt
+    .setName("job")
+    .setDescription("What this cron posts (default: reminder)")
+    .addChoices(...JOB_TYPES.map((type) => ({ name: type, value: type })))
+    .setRequired(false);
+
+function buildCronModal(id, cron, channelId, everyDays, job) {
   const field = (customId, label, value, { required = true, style = TextInputStyle.Short, placeholder } = {}) => {
     const input = new TextInputBuilder()
       .setCustomId(customId)
@@ -65,15 +74,26 @@ function buildCronModal(id, cron, channelId, everyDays) {
     return new ActionRowBuilder().addComponents(input);
   };
 
+  const weather = job === "weather";
+
   return new ModalBuilder()
-    .setCustomId(`${MODAL_PREFIX}${id}:${channelId || NONE}:${everyDays ?? NONE}`)
+    .setCustomId(`${MODAL_PREFIX}${id}:${channelId || NONE}:${everyDays ?? NONE}:${job}`)
     .setTitle(`Cron: ${id}`.slice(0, 45))
     .addComponents(
       field("times", "Times (24h ET, comma-separated)", timesToLabel(cron?.times), { placeholder: "06:00, 18:00" }),
       field("days", "Days (daily, weekdays, Mon,Wed or 0,3)", cron ? daysToLabel(cron.days) : "daily"),
-      field("message", "Message (optional if the cron has a gif)", cron?.message, { style: TextInputStyle.Paragraph, required: false }),
+      field(
+        "message",
+        weather ? "Line above the forecast (optional)" : "Message (optional if the cron has a gif)",
+        cron?.message,
+        { style: TextInputStyle.Paragraph, required: false },
+      ),
       field("mentions", "Mentions (env keys or user ids, comma-sep)", (cron?.mentions ?? ["KING_USER_ID", "QUEEN_USER_ID"]).join(", "), { required: false }),
-      field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false }),
+      // A weather post has nothing to confirm, so its fifth input (five is the
+      // modal cap) is the place to forecast rather than a button label.
+      weather
+        ? field("location", "Location (blank = WEATHER_LOCATION)", cron?.location, { required: false, placeholder: "Rock Hill, SC" })
+        : field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false }),
     );
 }
 
@@ -81,8 +101,9 @@ function describeCron(env, id, cron) {
   const channelId = resolveChannelId(env, cron);
   const mentions = resolveMentions(env, cron);
   const everyDays = normalizeEveryDays(cron.everyDays);
+  const job = jobTypeOf(cron);
   const lines = [
-    `**${id}** ${cron.enabled === false ? "⏸️ (disabled)" : "▶️"}`,
+    `**${id}** ${cron.enabled === false ? "⏸️ (disabled)" : "▶️"}${job === DEFAULT_JOB ? "" : ` — *${job}*`}`,
     `• ${timesToLabel(cron.times) || "—"} ET, ${daysToLabel(cron.days)}`,
   ];
   if (everyDays) {
@@ -92,8 +113,12 @@ function describeCron(env, id, cron) {
   lines.push(
     `• channel: ${channelId ? `<#${channelId}>` : "— (unset)"}`,
     `• mentions: ${mentions.length ? mentions.map((uid) => `<@${uid}>`).join(" ") : "— (unresolved)"}`,
-    `• button: ${cron.button ? `\`${cron.button}\`` : "none"}`,
   );
+  if (job === "weather") {
+    lines.push(`• location: ${cron.location || env.WEATHER_LOCATION || "— (set WEATHER_LOCATION)"}`);
+  } else {
+    lines.push(`• button: ${cron.button ? `\`${cron.button}\`` : "none"}`);
+  }
   if (cron.message) lines.push(`• ${cron.message}`);
   if (cron.gif) lines.push(`• gif: <${cron.gif}>`);
   return lines.join("\n");
@@ -106,7 +131,9 @@ function describeCron(env, id, cron) {
  */
 export async function handleCronModalSubmit(interaction) {
   if (!interaction.customId.startsWith(MODAL_PREFIX)) return;
-  const [id, channelToken, everyDaysToken] = interaction.customId.slice(MODAL_PREFIX.length).split(":");
+  const [id, channelToken, everyDaysToken, jobToken] = interaction.customId.slice(MODAL_PREFIX.length).split(":");
+  const job = JOB_TYPES.includes(jobToken) ? jobToken : DEFAULT_JOB;
+  const weather = job === "weather";
 
   await interaction.deferReply({ ephemeral: true });
 
@@ -125,10 +152,13 @@ export async function handleCronModalSubmit(interaction) {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  const button = interaction.fields.getTextInputValue("button").trim();
+  // A weather cron traded the button input for a location (see buildCronModal).
+  const button = weather ? "" : interaction.fields.getTextInputValue("button").trim();
+  const location = weather ? interaction.fields.getTextInputValue("location").trim() : null;
 
   const existing = currentEnv().crons?.[id];
-  if (!message && !existing?.gif) {
+  // A weather cron always has a forecast to post; a reminder needs words or a gif.
+  if (!weather && !message && !existing?.gif) {
     await interaction.editReply("❌ The message can't be empty unless the cron has a gif (`/cron gif`).");
     return;
   }
@@ -141,6 +171,7 @@ export async function handleCronModalSubmit(interaction) {
   const record = {
     ...existing,
     enabled: existing?.enabled ?? true,
+    job,
     times,
     days,
     channel: channelToken !== NONE ? channelToken : (existing?.channel ?? ""),
@@ -149,6 +180,8 @@ export async function handleCronModalSubmit(interaction) {
     mentions,
     button,
   };
+  if (weather) record.location = location;
+  else delete record.location;
   if (everyDays) {
     record.everyDays = everyDays;
     // A cron that just became an interval counts today as its last run, so
@@ -182,7 +215,8 @@ export default {
         .setDescription("Create a cron (opens a form)")
         .addStringOption((opt) => opt.setName("id").setDescription("New id, e.g. neema-pill").setRequired(true))
         .addChannelOption(channelOption)
-        .addIntegerOption(everyDaysOption),
+        .addIntegerOption(everyDaysOption)
+        .addStringOption(jobOption),
     )
     .addSubcommand((sub) =>
       sub
@@ -190,7 +224,8 @@ export default {
         .setDescription("Edit a cron (opens a pre-filled form)")
         .addStringOption(idOption)
         .addChannelOption(channelOption)
-        .addIntegerOption(everyDaysOption),
+        .addIntegerOption(everyDaysOption)
+        .addStringOption(jobOption),
     )
     .addSubcommand((sub) =>
       sub
@@ -229,6 +264,8 @@ export default {
       const channelId = interaction.options.getChannel("channel")?.id ?? "";
       const everyDays = interaction.options.getInteger("every_days");
       const existing = currentEnv().crons?.[id];
+      // The option wins when given; otherwise the cron stays what it already is.
+      const job = interaction.options.getString("job") ?? jobTypeOf(existing);
 
       if (!ID_PATTERN.test(id)) {
         await interaction.reply({ content: "❌ Ids are 1–32 lowercase letters, digits, `-` or `_`, e.g. `neema-pill`.", ephemeral: true });
@@ -243,7 +280,7 @@ export default {
         return;
       }
 
-      await interaction.showModal(buildCronModal(id, existing, channelId, everyDays));
+      await interaction.showModal(buildCronModal(id, existing, channelId, everyDays, job));
       return;
     }
 
@@ -317,8 +354,17 @@ export default {
       }
 
       if (sub === "run") {
-        // Test fire: ignores an interval gate and doesn't stamp lastRun.
-        const posted = await runReminder({ client: interaction.client }, id, { force: true });
+        // Test fire: ignores an interval gate and doesn't stamp lastRun. A job
+        // that throws — a weather cron whose location won't resolve, say — says
+        // why here rather than falling through to the generic failure below.
+        let posted;
+        try {
+          posted = await runJob({ client: interaction.client }, id, cron, { force: true });
+        } catch (err) {
+          console.error(`💥 [chappelly] /cron run \`${id}\` failed:`, err);
+          await interaction.editReply(`❌ \`${id}\` failed: ${err.message}`);
+          return;
+        }
         await interaction.editReply(
           posted
             ? `✅ Fired \`${id}\`: ${posted.url}${normalizeEveryDays(cron.everyDays) ? " (test run — the every-N-days timer is untouched)" : ""}`

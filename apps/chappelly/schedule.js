@@ -120,3 +120,17 @@ export function cronSlots(cron) {
     return atTime(hour, minute, days);
   });
 }
+
+/**
+ * The interval gate for an `everyDays` cron, shared by every job type: a cron
+ * without `everyDays` is always due, and one with it is due once that many
+ * whole days have passed since `lastRun`. An unset or malformed `lastRun`
+ * counts as due, so a hand-edited env can't wedge a cron permanently.
+ * @returns {{ everyDays: number|null, since: number|null, due: boolean }}
+ */
+export function intervalStatus(cron, today) {
+  const everyDays = normalizeEveryDays(cron?.everyDays);
+  if (!everyDays) return { everyDays: null, since: null, due: true };
+  const since = daysBetween(cron?.lastRun, today);
+  return { everyDays, since, due: since === null || since >= everyDays };
+}
