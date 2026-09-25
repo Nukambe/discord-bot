@@ -165,40 +165,126 @@ export const buildSchedule = (jobs, ctx) => {
 };
 
 /**
+ * "Now" as the scheduler sees it: the America/New_York weekday and minute of the
+ * day. Read from typed Intl parts rather than a parsed locale string, for the
+ * same reason as util/dateUtils.js — the packaged build's Node formats those
+ * strings differently than plain Node does.
+ */
+const estNow = (now) => {
+    const parts = new Intl.DateTimeFormat("en-US", {
+        timeZone: TIMEZONE,
+        weekday: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hourCycle: "h23",
+    }).formatToParts(now);
+    const map = {};
+    for (const part of parts) map[part.type] = part.value;
+    return {
+        dow: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(map.weekday),
+        minutes: Number(map.hour) * 60 + Number(map.minute),
+    };
+};
+
+const formatSlotTime = (minutes) =>
+    `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+
+/**
+ * The jobs whose slot for today has already gone by at `now` — i.e. what a
+ * process starting up right now would have been down for.
+ *
+ * A job is "missed" if any of its slots falls on today's day-of-week at or
+ * before the current minute; the latest such slot is reported, for the log line.
+ * This can't know whether the process was actually running at that minute, so a
+ * catch-up run may well be redundant — every job answers "is this already done?"
+ * from Discord or the db before it does any work, so a redundant run is a cheap
+ * no-op. The exception is the gift rotation, which isn't idempotent: it decides
+ * for itself, off the `catchUp` flag startScheduler passes into `run`.
+ *
+ * @param {Array<{name: string, slots: Function, run: Function}>} jobs
+ * @param {object} ctx - Same ctx the jobs' `slots()` get from buildSchedule.
+ * @param {Date} [now]
+ * @returns {Array<{ job: object, minutes: number }>} in `jobs` order.
+ */
+export const missedJobs = (jobs, ctx, now = new Date()) => {
+    const { dow, minutes: nowMinutes } = estNow(now);
+
+    const missed = [];
+    for (const job of jobs) {
+        let slots;
+        try {
+            slots = job.slots(ctx) ?? [];
+        } catch (err) {
+            console.error(`💥 Could not resolve schedule for job "${job.name}":`, err);
+            continue;
+        }
+
+        let latest = null;
+        for (const slot of slots) {
+            if (slot.dow !== dow) continue;
+            const slotMinutes = slot.hour * 60 + slot.minute;
+            if (slotMinutes > nowMinutes) continue;
+            if (latest === null || slotMinutes > latest) latest = slotMinutes;
+        }
+        if (latest !== null) missed.push({ job, minutes: latest });
+    }
+    return missed;
+};
+
+/**
  * Register the resolved schedule. Returns a handle whose `stop()` tears every
  * task down again, so a config change can rebuild the whole set:
  *
  *   scheduler?.stop();
  *   scheduler = startScheduler(JOBS, { client, db });
+ *
+ * `opts.catchUp` additionally runs, once, every job whose slot for today has
+ * already passed (see missedJobs) — what keeps a bot started at 8pm from sitting
+ * out the 7:30pm slot until tomorrow. It goes through the same serial queue as
+ * the cron tasks, so the catch-up sweep still opens one browser window at a time
+ * and can't race a slot that fires while it's working. Pass it only on the first
+ * call: an onDbChange rebuild would otherwise re-sweep on every config edit.
  */
-export const startScheduler = (jobs, ctx) => {
+export const startScheduler = (jobs, ctx, opts = {}) => {
+    const { catchUp = false } = opts;
     const schedule = buildSchedule(jobs, ctx);
 
     // Shared across every task: two slots can't run at once, and a job that
     // overruns its slot delays the next one instead of racing it for a browser.
     let queue = Promise.resolve();
 
+    const enqueue = (queuedJobs, runCtx) => {
+        queue = queue.then(async () => {
+            for (const job of queuedJobs) {
+                try {
+                    await job.run(runCtx);
+                } catch (err) {
+                    console.error(`💥 Cron job "${job.name}" failed:`, err);
+                }
+            }
+        });
+    };
+
     const tasks = schedule.map(({ expression, jobs: slotJobs }) =>
-        cron.schedule(
-            expression,
-            () => {
-                queue = queue.then(async () => {
-                    for (const job of slotJobs) {
-                        try {
-                            await job.run(ctx);
-                        } catch (err) {
-                            console.error(`💥 Cron job "${job.name}" failed:`, err);
-                        }
-                    }
-                });
-            },
-            { timezone: TIMEZONE }
-        )
+        cron.schedule(expression, () => enqueue(slotJobs, ctx), { timezone: TIMEZONE })
     );
 
     console.log(`⏰ Scheduled ${tasks.length} cron task(s) across ${jobs.length} job(s) (${TIMEZONE}):`);
     for (const { expression, jobs: slotJobs } of schedule) {
         console.log(`   ${expression.padEnd(30)} → ${slotJobs.map(job => job.name).join(", ")}`);
+    }
+
+    if (catchUp) {
+        const missed = missedJobs(jobs, ctx);
+        if (missed.length) {
+            console.log(
+                "⏪ Startup catch-up — today's slot has already passed for: " +
+                    missed.map(({ job, minutes }) => `${job.name} (${formatSlotTime(minutes)})`).join(", ")
+            );
+            enqueue(missed.map(({ job }) => job), { ...ctx, catchUp: true });
+        } else {
+            console.log("⏪ Startup catch-up: no slots have passed yet today.");
+        }
     }
 
     return {

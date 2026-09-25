@@ -1,7 +1,10 @@
 import { ChannelType } from "discord.js";
-import { getTodayPrettyDate, getTomorrowPrettyDate } from "../../util/dateUtils.js";
+import { getTodayPrettyDate, getTomorrowPrettyDate, toEstDateString } from "../../util/dateUtils.js";
 import { getDb, defaultDb } from "./db.js";
 import "dotenv/config";
+
+/** Heads every rotation log message, and is how `rotatedToday` recognizes one. */
+const ROTATION_TITLE = "🎁 Gift Rotator";
 
 /**
  * Read the giftee (selectable) and gifter (always gifts, never selected) rosters from the
@@ -65,6 +68,35 @@ export async function shouldSkipRotation(client) {
 }
 
 /**
+ * Whether a rotation has already been posted today (America/New_York).
+ *
+ * Only the startup catch-up needs this. Every other scheduled job answers "is this already
+ * done?" from Discord or the db as a matter of course, so re-firing a slot the process was
+ * down for costs nothing; a rotation pick is the exception — running it twice consumes two
+ * giftees out of one cycle. The evidence is the rotation log message's own timestamp rather
+ * than the STATE line's `ts`, which /gift-skip stamps too.
+ *
+ * Fails *closed*: a channel that can't be read reports the rotation as already run, so an
+ * unreadable channel can never turn into a double pick. The regularly scheduled run is
+ * unaffected — it has always just attempted the rotation.
+ *
+ * @param {import('discord.js').Client} client
+ * @returns {Promise<boolean>}
+ */
+export async function rotatedToday(client) {
+  const rotChan = await client.channels.fetch(process.env.GIFT_ROTATION_CHANNEL_ID).catch(() => null);
+  if (!isTextish(rotChan)) return true;
+
+  const msgs = await rotChan.messages.fetch({ limit: 20 }).catch(() => null);
+  if (!msgs) return true;
+
+  const today = toEstDateString(new Date());
+  return [...msgs.values()].some(
+    msg => msg.content.startsWith(ROTATION_TITLE) && toEstDateString(msg.createdAt) === today
+  );
+}
+
+/**
  * Read the rotation cycle STATE (who's left to be picked this cycle) from the rotation
  * channel's last message, normalized against the current giftee roster. Used by
  * /gift-pool view to show the live cycle alongside the rosters.
@@ -94,7 +126,7 @@ export async function getRotationState(client) {
  */
 export async function runGiftRotation(client, opts = {}) {
   const { debug = false } = opts;
-  const title = "🎁 Gift Rotator";
+  const title = ROTATION_TITLE;
   const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
 
   // Not swallowed: the rosters live in the db now, so a db that can't be read must abort

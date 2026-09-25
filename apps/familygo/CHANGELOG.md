@@ -6,6 +6,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+- Startup catch-up: on boot the scheduler runs every job whose slot for today
+  has already gone by, one after another through the same serial queue as the
+  cron tasks. A bot started at 8:12pm no longer sits out the 7:30pm slot —
+  free dice, spoilers and the news sweep run 40 minutes late instead of not at
+  all. A catch-up run is usually a no-op, since each job dedupes against
+  Discord or the db before doing any work; the gift rotation, which can't be
+  re-run safely, checks its channel for today's log message first.
+
 ### Changed
 - Wiki news sweep (`future-events`) moved from midnight to 7:30pm ET, in the
   shared slot with the other nightly jobs, and no longer decides what's new by

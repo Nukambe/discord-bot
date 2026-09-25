@@ -14,7 +14,7 @@ import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.j
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
-import { runGiftRotation, shouldSkipRotation } from "./giftRotation.js";
+import { runGiftRotation, shouldSkipRotation, rotatedToday } from "./giftRotation.js";
 import { deployCommands } from "./deploy-commands.js";
 import { fortuneFlipChannelListener } from "./postInstructions.js";
 import { initDb, defaultDb, onDbChange, getLastPosts, updateLastPosts } from "./db.js";
@@ -275,8 +275,17 @@ const JOBS = [
             const days = db.giftRotation?.days?.length ? db.giftRotation.days : [0, 3];
             return atTime(hour, minute, days);
         },
-        run: async ({ client, db }) => {
+        run: async ({ client, db, catchUp }) => {
             console.log("🎁 Running gift rotation...");
+
+            // The startup catch-up re-fires today's passed slots, which every other job
+            // shrugs off because it dedupes before doing any work. A rotation pick can't —
+            // a second one burns another giftee out of the cycle — so this is the one job
+            // that has to ask whether today's slot already happened.
+            if (catchUp && (await rotatedToday(client))) {
+                console.log("⏭️ Gift rotation already posted today. Skipping catch-up.");
+                return;
+            }
 
             // Pause window (configured via /config gift-rotation-pause)
             const pause = db.giftRotation?.pause;
@@ -460,7 +469,11 @@ client.once(Events.ClientReady, async () => {
         db = defaultDb();
     }
 
-    scheduler = startScheduler(JOBS, { client, db });
+    // catchUp only on this first call: a bot started at 8pm has already sat out the 7:30pm
+    // slot, so every job whose time has been and gone today gets one run now (see
+    // missedJobs). The rebuild below deliberately doesn't, or every /config edit would
+    // sweep again.
+    scheduler = startScheduler(JOBS, { client, db }, { catchUp: true });
 
     // Whenever a command updates the db, resolve every job's fire times against
     // the new config and re-register the whole set — job times can merge or
