@@ -1,5 +1,5 @@
 import { currentEnv } from "../env.js";
-import { intervalStatus } from "../schedule.js";
+import { intervalStatus, dateStatus, datesToLabel } from "../schedule.js";
 import { toEstDateString } from "../../../util/dateUtils.js";
 
 /**
@@ -54,7 +54,11 @@ export async function resolveChannel(client, env, cron, id) {
  * an interval cron's own `lastRun` stamp is written silently (no schedule
  * rebuild) and has to be visible to the very next slot.
  *
- * `force` (the manual /cron run) skips the interval gate; the caller is then
+ * A dated cron (`dates`) fires at its times every day as far as the scheduler
+ * knows — slots are weekly — and this is where every day but its dates drops
+ * out, the same way the interval gate works.
+ *
+ * `force` (the manual /cron run) skips both gates; the caller is then
  * responsible for *not* stamping lastRun, so a test post can't shift the
  * real cadence.
  * @returns {{ env: object, cron: object, today: string, everyDays: number|null }|null}
@@ -68,6 +72,12 @@ export function prepareRun(id, { force = false } = {}) {
   }
 
   const today = toEstDateString(new Date());
+  const { dates, due: onDate } = dateStatus(cron, today);
+  if (!force && !onDate) {
+    console.log(`⏭️ [chappelly] Cron "${id}": not the ${datesToLabel(dates)} of the month, skipping.`);
+    return null;
+  }
+
   const { everyDays, since, due } = intervalStatus(cron, today);
   if (!force && !due) {
     console.log(`⏭️ [chappelly] Cron "${id}": ${since}/${everyDays} day(s) since ${cron.lastRun}, not yet.`);

@@ -1,10 +1,11 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
 import { currentEnv, recordCronRun } from "../env.js";
 import { prepareRun, resolveChannel, resolveMentions, mentionLine } from "./common.js";
+import { resolveMedia } from "../media.js";
 
 /**
- * The "reminder" cron — the default job type: post a message (and/or a gif)
- * mentioning some people, optionally with a single confirmation button one of
+ * The "reminder" cron — the default job type: post a message (and/or a gif,
+ * and/or an `image` from media/ as an attachment) mentioning some people, optionally with a single confirmation button one of
  * them presses to mark it done. A cron entry under env.crons is one of these
  * unless its `job` says otherwise (see jobs/weather.js).
  *
@@ -47,8 +48,18 @@ export async function runReminder({ client }, id, { force = false } = {}) {
     .join(" ");
   // The gif goes on its own line so Discord unfurls it under the text.
   const content = [firstLine, String(cron.gif ?? "").trim()].filter(Boolean).join("\n");
-  if (!content) {
-    console.warn(`⚠️ [chappelly] Cron "${id}" has no message, gif or mentions — nothing to post.`);
+
+  // A missing image (renamed, or not deployed yet) is logged and dropped
+  // rather than costing the reminder itself.
+  const imageName = String(cron.image ?? "").trim();
+  const imagePath = imageName ? resolveMedia(imageName) : null;
+  if (imageName && !imagePath) {
+    console.warn(`⚠️ [chappelly] Cron "${id}": image "${imageName}" isn't in media/, posting without it.`);
+  }
+  const files = imagePath ? [{ attachment: imagePath, name: imageName }] : [];
+
+  if (!content && !files.length) {
+    console.warn(`⚠️ [chappelly] Cron "${id}" has no message, gif, image or mentions — nothing to post.`);
     return null;
   }
 
@@ -62,7 +73,7 @@ export async function runReminder({ client }, id, { force = false } = {}) {
       )]
     : [];
 
-  const message = await channel.send({ content, components });
+  const message = await channel.send({ content, components, files });
   console.log(`📣 [chappelly] Posted reminder "${id}" to #${channel.name ?? channel.id}`);
   if (everyDays && !force) await recordCronRun(client, id, today);
   return message;

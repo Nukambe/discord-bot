@@ -10,8 +10,11 @@ import {
 import { currentEnv, writeEnv, setPath, deletePath, recordCronRun } from "../env.js";
 import {
   parseTimes,
-  parseDays,
+  parseDayField,
+  dayFieldLabel,
   daysToLabel,
+  normalizeDates,
+  datesToLabel,
   timesToLabel,
   normalizeEveryDays,
   addDays,
@@ -20,6 +23,7 @@ import { resolveChannelId, resolveMentions } from "../jobs/common.js";
 import { describeFeeds } from "../jobs/news.js";
 import { runJob, jobTypeOf, JOB_TYPES, DEFAULT_JOB } from "../jobs/registry.js";
 import { FEED_PRESETS } from "../news.js";
+import { listMedia, resolveMedia } from "../media.js";
 import { toEstDateString } from "../../../util/dateUtils.js";
 
 /**
@@ -101,7 +105,9 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
     .setTitle(`Cron: ${id}`.slice(0, 45))
     .addComponents(
       field("times", "Times (24h ET, comma-separated)", timesToLabel(cron?.times), { placeholder: "06:00, 18:00" }),
-      field("days", "Days (daily, weekdays, Mon,Wed or 0,3)", cron ? daysToLabel(cron.days) : "daily"),
+      field("days", "Days (daily, Mon,Wed or dates 1st,15th,last)", cron ? dayFieldLabel(cron) : "daily", {
+        placeholder: "daily, weekdays, Mon,Wed — or 1st, 15th, last",
+      }),
       field("message", headerLabel, cron?.message, { style: TextInputStyle.Paragraph, required: false }),
       field(
         "mentions",
@@ -120,7 +126,9 @@ function describeCron(env, id, cron) {
   const job = jobTypeOf(cron);
   const lines = [
     `**${id}** ${cron.enabled === false ? "⏸️ (disabled)" : "▶️"}${job === DEFAULT_JOB ? "" : ` — *${job}*`}`,
-    `• ${timesToLabel(cron.times) || "—"} ET, ${daysToLabel(cron.days)}`,
+    `• ${timesToLabel(cron.times) || "—"} ET, ${
+      normalizeDates(cron.dates) ? `${datesToLabel(cron.dates)} of the month` : daysToLabel(cron.days)
+    }`,
   ];
   if (everyDays) {
     const next = addDays(cron.lastRun, everyDays);
@@ -142,6 +150,7 @@ function describeCron(env, id, cron) {
   }
   if (cron.message) lines.push(`• ${cron.message}`);
   if (cron.gif) lines.push(`• gif: <${cron.gif}>`);
+  if (cron.image) lines.push(`• image: \`${cron.image}\`${resolveMedia(cron.image) ? "" : " ⚠️ (not in media/)"}`);
   return lines.join("\n");
 }
 
@@ -164,11 +173,15 @@ export async function handleCronModalSubmit(interaction) {
     await interaction.editReply("❌ Invalid times. Use 24h HH:mm, comma-separated, e.g. `06:00, 18:00`.");
     return;
   }
-  const days = parseDays(interaction.fields.getTextInputValue("days"));
-  if (!days) {
-    await interaction.editReply("❌ Invalid days. Use `daily`, `weekdays`, `weekends`, day names or 0–6, e.g. `Mon,Wed`.");
+  const dayField = parseDayField(interaction.fields.getTextInputValue("days"));
+  if (!dayField) {
+    await interaction.editReply(
+      "❌ Invalid days. Use `daily`, `weekdays`, `weekends`, day names or 0–6 (e.g. `Mon,Wed`) — " +
+        "or dates of the month (e.g. `1st, 15th`, `last`), but not both.",
+    );
     return;
   }
+  const { days, dates } = dayField;
   const message = interaction.fields.getTextInputValue("message").trim();
   const mentions = interaction.fields.getTextInputValue("mentions")
     .split(",")
@@ -183,8 +196,8 @@ export async function handleCronModalSubmit(interaction) {
 
   const existing = currentEnv().crons?.[id];
   // A weather or news cron brings its own content; a reminder needs words or a gif.
-  if (!weather && !news && !message && !existing?.gif) {
-    await interaction.editReply("❌ The message can't be empty unless the cron has a gif (`/cron gif`).");
+  if (!weather && !news && !message && !existing?.gif && !existing?.image) {
+    await interaction.editReply("❌ The message can't be empty unless the cron has a gif (`/cron gif`) or image (`/cron image`).");
     return;
   }
   if (news && !feeds.length) {
@@ -222,6 +235,8 @@ export async function handleCronModalSubmit(interaction) {
     mentions,
     button,
   };
+  if (dates) record.dates = dates;
+  else delete record.dates;
   if (weather) record.location = location;
   else delete record.location;
   if (news) record.feeds = feeds;
@@ -280,6 +295,15 @@ export default {
     )
     .addSubcommand((sub) =>
       sub
+        .setName("image")
+        .setDescription("Attach (or clear) an image from apps/chappelly/media on a reminder")
+        .addStringOption(idOption)
+        .addStringOption((opt) =>
+          opt.setName("file").setDescription("Image file — leave out to clear").setRequired(false).setAutocomplete(true),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
         .setName("reset")
         .setDescription("Restart an every-N-days cron's countdown from today")
         .addStringOption(idOption),
@@ -292,8 +316,12 @@ export default {
 
   async autocomplete(interaction) {
     const focused = interaction.options.getFocused(true);
-    if (focused.name !== "id") return interaction.respond([]);
     const needle = focused.value.trim().toLowerCase();
+    if (focused.name === "file") {
+      const files = listMedia().filter((name) => name.toLowerCase().includes(needle));
+      return interaction.respond(files.slice(0, 25).map((name) => ({ name, value: name })));
+    }
+    if (focused.name !== "id") return interaction.respond([]);
     const ids = Object.keys(currentEnv().crons ?? {}).filter((id) => id.toLowerCase().includes(needle));
     await interaction.respond(ids.slice(0, 25).map((id) => ({ name: id, value: id })));
   },
@@ -365,12 +393,35 @@ export default {
           await interaction.editReply("❌ That doesn't look like a URL.");
           return;
         }
-        if (!url && !cron.message) {
+        if (!url && !cron.message && !cron.image) {
           await interaction.editReply("❌ Can't clear the gif — this cron has no message, so it would post nothing.");
           return;
         }
         await writeEnv(interaction.client, (e) => setPath(e, `crons.${id}.gif`, url), `🗄️ Env updated — cron \`${id}\` gif`);
         await interaction.editReply(url ? `✅ Cron \`${id}\` now posts <${url}>` : `✅ Cleared the gif on \`${id}\`.`);
+        return;
+      }
+
+      if (sub === "image") {
+        const file = interaction.options.getString("file")?.trim() ?? "";
+        if (jobTypeOf(cron) !== DEFAULT_JOB) {
+          await interaction.editReply(`❌ Only reminder crons post images — \`${id}\` is a ${jobTypeOf(cron)} cron.`);
+          return;
+        }
+        if (file && !resolveMedia(file)) {
+          const available = listMedia();
+          await interaction.editReply(
+            `❌ \`${file}\` isn't in apps/chappelly/media.` +
+              (available.length ? ` Available: \`${available.join("`, `")}\`` : " That folder is empty."),
+          );
+          return;
+        }
+        if (!file && !cron.message && !cron.gif) {
+          await interaction.editReply("❌ Can't clear the image — this cron has no message or gif, so it would post nothing.");
+          return;
+        }
+        await writeEnv(interaction.client, (e) => setPath(e, `crons.${id}.image`, file), `🗄️ Env updated — cron \`${id}\` image`);
+        await interaction.editReply(file ? `✅ Cron \`${id}\` now attaches \`${file}\`.` : `✅ Cleared the image on \`${id}\`.`);
         return;
       }
 

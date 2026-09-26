@@ -2,7 +2,8 @@ import { ALL_DAYS, atTime } from "./cronScheduler.js";
 
 /**
  * Parsing/formatting for the human-typed halves of a cron entry: the `times`
- * list ("06:00, 18:00") and the `days` list ("daily", "Mon,Wed", "0,3").
+ * list ("06:00, 18:00") and the `days` list ("daily", "Mon,Wed", "0,3") or,
+ * in its place, the `dates` list ("1st, 15th, last").
  * Shared by the /cron modal (which turns typed text into env values) and
  * index.js (which turns env values into scheduler slots).
  */
@@ -75,6 +76,75 @@ export function daysToLabel(days) {
   const normalized = normalizeDays(days);
   if (normalized.length === ALL_DAYS.length) return "daily";
   return normalized.map((d) => DAY_SHORT_NAMES[d]).join(",");
+}
+
+/**
+ * Dates of the month ("1st", "15th", "last") — the other thing the modal's
+ * Days box accepts. The scheduler only knows weekly slots, so a dated cron is
+ * stored as `days: every day` plus `dates: [1, 15]` and gated at run time
+ * (see dateStatus). A date past the month's end fires on its last day, which
+ * is what makes 31 mean "last": the 31st is Feb 28/29, Apr 30, and so on.
+ */
+export const LAST_DAY = 31;
+const DATE_TOKEN = /^(\d{1,2})(st|nd|rd|th)$/;
+
+const ordinal = (n) => {
+  if (n === LAST_DAY) return "last";
+  const suffix = n % 100 >= 11 && n % 100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" })[n % 10] ?? "th";
+  return `${n}${suffix}`;
+};
+
+/** Env `dates` as stored (possibly hand-edited) → sorted 1–31, or null when the cron isn't dated. */
+export function normalizeDates(dates) {
+  if (!Array.isArray(dates)) return null;
+  const valid = new Set();
+  for (const raw of dates) {
+    const n = String(raw).trim().toLowerCase() === "last" ? LAST_DAY : Number(raw);
+    if (Number.isInteger(n) && n >= 1 && n <= LAST_DAY) valid.add(n);
+  }
+  return valid.size ? [...valid].sort((a, b) => a - b) : null;
+}
+
+export const datesToLabel = (dates) => (normalizeDates(dates) ?? []).map(ordinal).join(", ");
+
+/**
+ * The modal's Days box: weekdays ("daily", "Mon,Wed", "0,3") or dates of the
+ * month ("1st, 15th, last"), not both — "Mon, 1st" has no obvious meaning.
+ * Bare digits stay weekdays, as they always were, which is why dates need
+ * their ordinal suffix.
+ * @returns {{ days: number[], dates: number[]|null }|null} null when malformed.
+ */
+export function parseDayField(input) {
+  const tokens = String(input).split(",").map((t) => t.trim().toLowerCase()).filter(Boolean);
+  const dateTokens = tokens.filter((t) => t === "last" || DATE_TOKEN.test(t));
+  if (!dateTokens.length) {
+    const days = parseDays(input);
+    return days ? { days, dates: null } : null;
+  }
+  if (dateTokens.length !== tokens.length) return null;
+  const dates = dateTokens.map((t) => (t === "last" ? LAST_DAY : Number(DATE_TOKEN.exec(t)[1])));
+  if (dates.some((n) => n < 1 || n > LAST_DAY)) return null;
+  return { days: [...ALL_DAYS], dates: normalizeDates(dates) };
+}
+
+/** What the Days box shows (and re-parses) for a cron. */
+export const dayFieldLabel = (cron) => {
+  const dates = normalizeDates(cron?.dates);
+  return dates ? datesToLabel(dates) : daysToLabel(cron?.days);
+};
+
+/**
+ * The dates gate for a dated cron: due when today (an ET "YYYY-MM-DD") is one
+ * of its `dates`, with dates past the month's end clamped to its last day.
+ * An undated cron is always due.
+ * @returns {{ dates: number[]|null, due: boolean }}
+ */
+export function dateStatus(cron, today) {
+  const dates = normalizeDates(cron?.dates);
+  if (!dates || !DATE_PATTERN.test(today ?? "")) return { dates, due: true };
+  const [y, m, d] = today.split("-").map(Number);
+  const monthLength = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return { dates, due: dates.some((date) => Math.min(date, monthLength) === d) };
 }
 
 export const timesToLabel = (times) => (Array.isArray(times) ? times : []).join(", ");

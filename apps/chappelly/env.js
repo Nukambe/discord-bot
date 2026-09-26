@@ -44,10 +44,11 @@ export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
  * Seed env, posted the first time the channel is empty. Cron entries are keyed
  * by id under `crons`; each is
  *   { enabled, job?, times: ["HH:mm" ET], days: [0-6, 0 = Sun], channel, message, gif, mentions,
- *     button, everyDays?, lastRun?, location?, feeds?, runOnStart? }
+ *     button, everyDays?, lastRun?, location?, feeds?, runOnStart?, dates?, image? }
  * where `mentions` lists env key names (KING_USER_ID) or raw user ids, an
- * empty `channel` falls back to REMINDER_CHANNEL_ID, and `gif` (a URL) goes on
- * its own line under the message so Discord embeds it.
+ * empty `channel` falls back to REMINDER_CHANNEL_ID, `gif` (a URL) goes on
+ * its own line under the message so Discord embeds it, and `image` names a
+ * file in apps/chappelly/media/ that a reminder posts as an attachment.
  *
  * `job` picks what the entry posts (see jobs/registry.js): "reminder" when
  * unset — message, gif and confirm button — "weather", which posts today's
@@ -62,6 +63,11 @@ export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
  * when it *may* fire, but it only posts once `everyDays` days have passed
  * since `lastRun` (an ET "YYYY-MM-DD", stamped on every post). /cron reset
  * stamps lastRun with today, which is what pushes the next post out again.
+ *
+ * `dates` ([1, 15], 1–31) pins the cron to days of the month: it still fires at
+ * its times on its `days`, but only posts on those dates, with a date past the
+ * month's end landing on its last day (so 31 means "last"). /cron writes
+ * `days: every day` alongside it, so the dates alone decide.
  */
 export const defaultEnv = () => ({
   KING_USER_ID: "",
@@ -84,10 +90,22 @@ export const defaultEnv = () => ({
     },
     "neema-food": {
       enabled: true,
-      times: ["07:00", "19:00"],
+      times: ["07:00"],
       days: [...ALL_DAYS],
       channel: "",
       message: "🍽️ Time to feed Neema! Did you feed her?",
+      mentions: ["KING_USER_ID", "QUEEN_USER_ID"],
+      button: "YES",
+    },
+    // The evening feeding is its own cron so it can carry the photo of her
+    // dinner pills — a run doesn't know which of a cron's times fired it.
+    "neema-dinner": {
+      enabled: true,
+      times: ["19:00"],
+      days: [...ALL_DAYS],
+      channel: "",
+      message: "🍽️ Time to feed Neema! Did you feed her?",
+      image: "neema-dinner-pills.png",
       mentions: ["KING_USER_ID", "QUEEN_USER_ID"],
       button: "YES",
     },
