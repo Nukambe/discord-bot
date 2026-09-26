@@ -17,16 +17,18 @@ import {
   addDays,
 } from "../schedule.js";
 import { resolveChannelId, resolveMentions } from "../jobs/common.js";
+import { describeFeeds } from "../jobs/news.js";
 import { runJob, jobTypeOf, JOB_TYPES, DEFAULT_JOB } from "../jobs/registry.js";
+import { FEED_PRESETS } from "../news.js";
 import { toEstDateString } from "../../../util/dateUtils.js";
 
 /**
  * Form-driven editing of env.crons. A modal holds at most five text inputs, so
  * the cron's id, channel, interval and job type travel as slash options (and
  * ride along in the modal's customId), and the modal itself takes times, days,
- * message, mentions and either a button label or — for a weather cron — the
- * place to forecast. The gif has its own subcommand since swapping it is the
- * common edit. Anything the form can't express is one
+ * message, mentions and — depending on the job — a button label, the place to
+ * forecast, or the feeds to read. The gif has its own subcommand since swapping
+ * it is the common edit. Anything the form can't express is one
  * `/env set crons.<id>.<field>` away.
  */
 
@@ -75,6 +77,24 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
   };
 
   const weather = job === "weather";
+  const news = job === "news";
+
+  const headerLabel = weather
+    ? "Line above the forecast (optional)"
+    : news
+      ? "Line above the articles (optional)"
+      : "Message (optional if the cron has a gif)";
+
+  // Neither a forecast nor a news batch has anything to confirm, so the fifth
+  // input (five is the modal cap) goes to whatever that job actually needs.
+  const lastField = weather
+    ? field("location", "Location (blank = WEATHER_LOCATION)", cron?.location, { required: false, placeholder: "Rock Hill, SC" })
+    : news
+      ? field("feeds", "Feeds (preset names or URLs, comma-sep)", (cron?.feeds ?? []).join(", "), {
+          required: true,
+          placeholder: Object.keys(FEED_PRESETS).slice(0, 3).join(", "),
+        })
+      : field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false });
 
   return new ModalBuilder()
     .setCustomId(`${MODAL_PREFIX}${id}:${channelId || NONE}:${everyDays ?? NONE}:${job}`)
@@ -82,18 +102,14 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
     .addComponents(
       field("times", "Times (24h ET, comma-separated)", timesToLabel(cron?.times), { placeholder: "06:00, 18:00" }),
       field("days", "Days (daily, weekdays, Mon,Wed or 0,3)", cron ? daysToLabel(cron.days) : "daily"),
+      field("message", headerLabel, cron?.message, { style: TextInputStyle.Paragraph, required: false }),
       field(
-        "message",
-        weather ? "Line above the forecast (optional)" : "Message (optional if the cron has a gif)",
-        cron?.message,
-        { style: TextInputStyle.Paragraph, required: false },
+        "mentions",
+        "Mentions (env keys or user ids, comma-sep)",
+        (cron?.mentions ?? (weather || news ? [] : ["KING_USER_ID", "QUEEN_USER_ID"])).join(", "),
+        { required: false },
       ),
-      field("mentions", "Mentions (env keys or user ids, comma-sep)", (cron?.mentions ?? ["KING_USER_ID", "QUEEN_USER_ID"]).join(", "), { required: false }),
-      // A weather post has nothing to confirm, so its fifth input (five is the
-      // modal cap) is the place to forecast rather than a button label.
-      weather
-        ? field("location", "Location (blank = WEATHER_LOCATION)", cron?.location, { required: false, placeholder: "Rock Hill, SC" })
-        : field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false }),
+      lastField,
     );
 }
 
@@ -110,12 +126,17 @@ function describeCron(env, id, cron) {
     const next = addDays(cron.lastRun, everyDays);
     lines.push(`• every ${everyDays} days — last ${cron.lastRun ?? "never"}, next ${next ?? "at the next slot"}`);
   }
-  lines.push(
-    `• channel: ${channelId ? `<#${channelId}>` : "— (unset)"}`,
-    `• mentions: ${mentions.length ? mentions.map((uid) => `<@${uid}>`).join(" ") : "— (unresolved)"}`,
-  );
+  if (cron.runOnStart) lines.push("• also runs once when the bot restarts");
+  lines.push(`• channel: ${channelId ? `<#${channelId}>` : "— (unset)"}`);
+  // A news cron mentions nobody by design, so the "— (unresolved)" warning
+  // would read as a misconfiguration rather than the intended state.
+  if (job !== "news" || mentions.length) {
+    lines.push(`• mentions: ${mentions.length ? mentions.map((uid) => `<@${uid}>`).join(" ") : "— (unresolved)"}`);
+  }
   if (job === "weather") {
     lines.push(`• location: ${cron.location || env.WEATHER_LOCATION || "— (set WEATHER_LOCATION)"}`);
+  } else if (job === "news") {
+    lines.push(`• feeds: ${describeFeeds(cron) || "— (none set)"}`);
   } else {
     lines.push(`• button: ${cron.button ? `\`${cron.button}\`` : "none"}`);
   }
@@ -134,6 +155,7 @@ export async function handleCronModalSubmit(interaction) {
   const [id, channelToken, everyDaysToken, jobToken] = interaction.customId.slice(MODAL_PREFIX.length).split(":");
   const job = JOB_TYPES.includes(jobToken) ? jobToken : DEFAULT_JOB;
   const weather = job === "weather";
+  const news = job === "news";
 
   await interaction.deferReply({ ephemeral: true });
 
@@ -152,15 +174,35 @@ export async function handleCronModalSubmit(interaction) {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  // A weather cron traded the button input for a location (see buildCronModal).
-  const button = weather ? "" : interaction.fields.getTextInputValue("button").trim();
+  // Weather and news crons traded the button input away (see buildCronModal).
+  const button = weather || news ? "" : interaction.fields.getTextInputValue("button").trim();
   const location = weather ? interaction.fields.getTextInputValue("location").trim() : null;
+  const feeds = news
+    ? interaction.fields.getTextInputValue("feeds").split(",").map((f) => f.trim()).filter(Boolean)
+    : null;
 
   const existing = currentEnv().crons?.[id];
-  // A weather cron always has a forecast to post; a reminder needs words or a gif.
-  if (!weather && !message && !existing?.gif) {
+  // A weather or news cron brings its own content; a reminder needs words or a gif.
+  if (!weather && !news && !message && !existing?.gif) {
     await interaction.editReply("❌ The message can't be empty unless the cron has a gif (`/cron gif`).");
     return;
+  }
+  if (news && !feeds.length) {
+    await interaction.editReply(
+      `❌ A news cron needs at least one feed. Presets: \`${Object.keys(FEED_PRESETS).join("`, `")}\` — or paste a feed URL.`,
+    );
+    return;
+  }
+  if (news) {
+    // Catching a typo'd preset here beats letting the cron fail silently at its
+    // next slot, where only the logs would say why.
+    const bad = feeds.filter((feed) => !FEED_PRESETS[feed] && !URL_PATTERN.test(feed));
+    if (bad.length) {
+      await interaction.editReply(
+        `❌ Unknown feed(s): \`${bad.join("`, `")}\`. Presets: \`${Object.keys(FEED_PRESETS).join("`, `")}\` — or paste a feed URL.`,
+      );
+      return;
+    }
   }
 
   // Options given on the slash command win; otherwise keep what the cron had.
@@ -182,6 +224,8 @@ export async function handleCronModalSubmit(interaction) {
   };
   if (weather) record.location = location;
   else delete record.location;
+  if (news) record.feeds = feeds;
+  else delete record.feeds;
   if (everyDays) {
     record.everyDays = everyDays;
     // A cron that just became an interval counts today as its last run, so
@@ -365,10 +409,15 @@ export default {
           await interaction.editReply(`❌ \`${id}\` failed: ${err.message}`);
           return;
         }
+        // "Nothing new" is the ordinary outcome for a news cron most of the
+        // time, not a misconfiguration, so it doesn't send anyone to the logs.
+        const quiet = jobTypeOf(cron) === "news"
+          ? `ℹ️ \`${id}\` found nothing new in its feeds — everything is already in the channel.`
+          : `⚠️ \`${id}\` didn't post — check the channel / REMINDER_CHANNEL_ID (see logs).`;
         await interaction.editReply(
           posted
             ? `✅ Fired \`${id}\`: ${posted.url}${normalizeEveryDays(cron.everyDays) ? " (test run — the every-N-days timer is untouched)" : ""}`
-            : `⚠️ \`${id}\` didn't post — check the channel / REMINDER_CHANNEL_ID (see logs).`,
+            : quiet,
         );
       }
     } catch (err) {

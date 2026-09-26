@@ -28,8 +28,8 @@ import { handleCronModalSubmit, MODAL_PREFIX } from "./commands/cron.js";
  * a malformed one throws from slots() and the scheduler logs and skips it.
  *
  * Which job an entry runs is data too: `job` names a runner in the registry
- * ("reminder" when unset, "weather" for a forecast post), so adding a kind of
- * post means a new module there, not a change here.
+ * ("reminder" when unset, "weather" for a forecast post, "news" for a feed
+ * sweep), so adding a kind of post means a new module there, not a change here.
  */
 const buildJobs = (env) =>
   Object.entries(env.crons ?? {})
@@ -39,6 +39,36 @@ const buildJobs = (env) =>
       slots: () => cronSlots(cron),
       run: (ctx) => runJob(ctx, id, cron),
     }));
+
+/**
+ * Fire every cron marked `runOnStart` once, as the bot comes up, on top of its
+ * normal times — a dyno restarted at 10:40 shouldn't sit idle until 11:00.
+ *
+ * Only a job that can tell it has already posted may use the flag: the news job
+ * scans its channel for the URLs it would post, so a redundant boot run costs a
+ * feed fetch and posts nothing. A reminder has no such check, which is exactly
+ * why the scheduler itself still has no catch-up (see cronScheduler.js).
+ *
+ * This runs *before* the ticker starts rather than after, so a boot landing a
+ * second or two before the hour can't have the startup run and the 00:00 slot
+ * in flight at once — two concurrent runs would both scan the channel before
+ * either had posted, and the scan is the only thing stopping a duplicate.
+ */
+async function runBootJobs(ctx) {
+  const due = Object.entries(ctx.env.crons ?? {}).filter(
+    ([, cron]) => cron && typeof cron === "object" && cron.enabled !== false && cron.runOnStart === true,
+  );
+  if (!due.length) return;
+
+  console.log(`🚀 [chappelly] Startup run: ${due.map(([id]) => id).join(", ")}`);
+  for (const [id, cron] of due) {
+    try {
+      await runJob(ctx, id, cron);
+    } catch (err) {
+      console.error(`💥 [chappelly] Startup run of cron "${id}" failed:`, err);
+    }
+  }
+}
 
 const ephemeralError = async (interaction, content) => {
   if (interaction.deferred || interaction.replied) {
@@ -165,6 +195,7 @@ export function startChappelly() {
       env = defaultEnv();
     }
 
+    await runBootJobs({ client, env });
     scheduler = startScheduler(buildJobs(env), { client, env });
 
     // Every env write — /env set, /cron edit, anything — re-resolves the whole

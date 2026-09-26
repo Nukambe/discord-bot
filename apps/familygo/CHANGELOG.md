@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-run safely, checks its channel for today's log message first.
 
 ### Changed
+- The scheduler no longer runs on node-cron. It ticks once a minute on its own
+  timer and runs every job whose slot fell inside the minutes since the last
+  tick — at most once per job — so a late timer, a stalled event loop or a
+  machine asleep over a slot all resolve the same way: the next tick sees the
+  minutes that went by and runs what they were due. The startup log still
+  lists the schedule as cron expressions, purely as a readable summary.
 - Wiki news sweep (`future-events`) moved from midnight to 7:30pm ET, in the
   shared slot with the other nightly jobs, and no longer decides what's new by
   calendar date. It uses the wiki's own "Today's Events (<date>)" posts as day
@@ -36,6 +42,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   brand-new Scopely event still gets an icon until a dedicated one is added.
 
 ### Fixed
+- Scheduled slots were being silently dropped on the desktop build. node-cron 4
+  fires each expression from one long timer and only runs the task if that
+  timer lands with the second hand on :00; Windows coalesces background timers
+  so they routinely landed a second late, which node-cron logged as a "missed
+  execution" and skipped — or, for an expression's first fire since boot, said
+  nothing at all. That is how a whole 7:30pm slot (free dice, spoilers, news
+  sweep) went by with nothing running while the process was up. The
+  minute-ticker above replaces it.
 - An article the wiki republishes at a new `-2` URL (the full Monster Mash album
   preview) is no longer skipped as "already posted": the wiki copies the old
   article's metadata across, so its JSON-LD `url` named the old slug and matched

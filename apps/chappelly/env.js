@@ -31,20 +31,32 @@ const SCAN_LIMIT = 50;
 
 /** Keys a direct edit may not touch. */
 export const RESERVED_KEYS = new Set(["ts"]);
+
+/**
+ * ["00:00", "01:00", ... "23:00"] — an hourly cron is spelled out rather than
+ * given its own notation, so `times` means one thing everywhere and /cron's
+ * form can still edit it.
+ */
+export const HOURLY = Array.from({ length: 24 }, (_, hour) => `${String(hour).padStart(2, "0")}:00`);
 export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
 
 /**
  * Seed env, posted the first time the channel is empty. Cron entries are keyed
  * by id under `crons`; each is
  *   { enabled, job?, times: ["HH:mm" ET], days: [0-6, 0 = Sun], channel, message, gif, mentions,
- *     button, everyDays?, lastRun?, location? }
+ *     button, everyDays?, lastRun?, location?, feeds?, runOnStart? }
  * where `mentions` lists env key names (KING_USER_ID) or raw user ids, an
  * empty `channel` falls back to REMINDER_CHANNEL_ID, and `gif` (a URL) goes on
  * its own line under the message so Discord embeds it.
  *
  * `job` picks what the entry posts (see jobs/registry.js): "reminder" when
- * unset — message, gif and confirm button — or "weather", which posts today's
- * forecast for `location` (or WEATHER_LOCATION) and ignores gif/button.
+ * unset — message, gif and confirm button — "weather", which posts today's
+ * forecast for `location` (or WEATHER_LOCATION) and ignores gif/button, or
+ * "news", which posts whatever is new in `feeds` and ignores gif/button too.
+ *
+ * `runOnStart` fires the cron once when the bot boots, in addition to its
+ * times. Only a job that can tell it has already posted should use it — news
+ * can (it scans the channel), a reminder can't.
  *
  * `everyDays` turns the cron into an interval: its times/days still decide
  * when it *may* fire, but it only posts once `everyDays` days have passed
@@ -101,6 +113,21 @@ export const defaultEnv = () => ({
       message: "Good morning! Here's today's weather:",
       // Blank = wherever WEATHER_LOCATION points.
       location: "",
+      mentions: [],
+      button: "",
+    },
+    news: {
+      enabled: true,
+      job: "news",
+      // Hourly, plus once at boot — the job scans the channel for what it has
+      // already posted, so an extra run costs a feed fetch and nothing else.
+      times: [...HOURLY],
+      days: [...ALL_DAYS],
+      runOnStart: true,
+      channel: "",
+      // Preset keys from news.js (a raw feed URL works too).
+      feeds: ["npr", "patch-belair"],
+      message: "",
       mentions: [],
       button: "",
     },

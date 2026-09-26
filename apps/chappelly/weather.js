@@ -67,10 +67,94 @@ export const UNIT_SETS = {
 
 export const unitsFor = (name) => UNIT_SETS[String(name).trim().toLowerCase()] ?? UNIT_SETS.imperial;
 
+/**
+ * Retry budget for one request. Open-Meteo answers the occasional 503, and the
+ * weather cron gets exactly one shot a day at its slot — without this, a blip
+ * at that moment was the day's forecast gone (jobs/weather.js throws rather
+ * than post something made up, and the next attempt is tomorrow's). Three
+ * tries half a minute apart outlast a momentary outage and still finish well
+ * inside the slot, so the reminder sharing it isn't held up.
+ */
+const RETRY_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 30_000;
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Fetch and parse JSON, retrying what might come right on its own: a 5xx or
+ * 429, a timeout, a dropped connection, a body that isn't JSON (a gateway's
+ * error page). Any other HTTP status is the request being wrong, and is thrown
+ * at once — a 404 won't improve in thirty seconds.
+ */
 async function getJson(url) {
-  const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
-  if (!res.ok) throw new Error(`${new URL(url).host} answered HTTP ${res.status}`);
-  return res.json();
+  const host = new URL(url).host;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+      if (!res.ok) {
+        const err = new Error(`${host} answered HTTP ${res.status}`);
+        err.status = res.status;
+        throw err;
+      }
+      return await res.json();
+    } catch (err) {
+      // No status means the request never got an answer (network, timeout) or
+      // the answer wasn't JSON — both as transient as a 5xx.
+      const transient = err.status === undefined || err.status === 429 || err.status >= 500;
+      if (!transient || attempt >= RETRY_ATTEMPTS) throw err;
+      const reason = err.status === undefined ? err.message : `HTTP ${err.status}`;
+      console.warn(
+        `⚠️ [chappelly] ${host}: ${reason} — retrying in ${RETRY_DELAY_MS / 1000}s (attempt ${attempt} of ${RETRY_ATTEMPTS})`
+      );
+      await sleep(RETRY_DELAY_MS);
+    }
+  }
+}
+
+/**
+ * Postal abbreviations → the admin1 names Open-Meteo actually returns. People
+ * type "Abingdon, MD"; the geocoder answers `admin1: "Maryland"`, so without
+ * this the hint matches nothing and the first (largest) result wins — which is
+ * how "Abingdon, MD" used to resolve to Abingdon, Virginia.
+ */
+const REGION_ALIASES = new Map(Object.entries({
+  al: "alabama", ak: "alaska", az: "arizona", ar: "arkansas", ca: "california",
+  co: "colorado", ct: "connecticut", de: "delaware", dc: "district of columbia",
+  fl: "florida", ga: "georgia", hi: "hawaii", id: "idaho", il: "illinois",
+  in: "indiana", ia: "iowa", ks: "kansas", ky: "kentucky", la: "louisiana",
+  me: "maine", md: "maryland", ma: "massachusetts", mi: "michigan",
+  mn: "minnesota", ms: "mississippi", mo: "missouri", mt: "montana",
+  ne: "nebraska", nv: "nevada", nh: "new hampshire", nj: "new jersey",
+  nm: "new mexico", ny: "new york", nc: "north carolina", nd: "north dakota",
+  oh: "ohio", ok: "oklahoma", or: "oregon", pa: "pennsylvania", pr: "puerto rico",
+  ri: "rhode island", sc: "south carolina", sd: "south dakota", tn: "tennessee",
+  tx: "texas", ut: "utah", vt: "vermont", va: "virginia", wa: "washington",
+  wv: "west virginia", wi: "wisconsin", wy: "wyoming",
+  ab: "alberta", bc: "british columbia", mb: "manitoba", nb: "new brunswick",
+  nl: "newfoundland and labrador", ns: "nova scotia", on: "ontario",
+  pe: "prince edward island", qc: "quebec", sk: "saskatchewan",
+  usa: "united states", us: "united states", uk: "united kingdom",
+}));
+
+/** Lowercase, drop punctuation, collapse whitespace: "St. Mary's Co." → "st marys co". */
+const normalize = (value) =>
+  String(value ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").replace(/\s+/g, " ").trim();
+
+/**
+ * Does a geocoder result sit in the region the user typed after the comma?
+ * Compares the hint — and its expanded form, if it's a known abbreviation —
+ * against every region field on the result, both as typed and expanded.
+ */
+function matchesHint(result, hint) {
+  const wanted = new Set([hint, REGION_ALIASES.get(hint)].filter(Boolean));
+  return [result.admin1, result.admin2, result.country, result.country_code].some((field) => {
+    const value = normalize(field);
+    if (!value) return false;
+    // Open-Meteo is inconsistent about the suffix — "Harford County" but plain
+    // "Knox" — so a typed "Harford" has to match either spelling.
+    const trimmed = value.replace(/ (county|parish|borough|municipality)$/, "");
+    return wanted.has(value) || wanted.has(trimmed) || wanted.has(REGION_ALIASES.get(value));
+  });
 }
 
 // A place name resolves to the same coordinates forever, and the schedule
@@ -109,12 +193,18 @@ export async function resolveLocation(query) {
   const results = (await getJson(url)).results ?? [];
   if (results.length === 0) throw new Error(`Couldn't find a place called "${raw}".`);
 
-  const hint = rest.join(" ").toLowerCase();
-  const match = (hint && results.find((r) =>
-    [r.admin1, r.admin2, r.country, r.country_code].some(
-      (field) => typeof field === "string" && field.toLowerCase() === hint,
-    ),
-  )) ?? results[0];
+  const hint = normalize(rest.join(" "));
+  let match = results[0];
+  if (hint) {
+    // Falling back to results[0] on an unmatched hint is how "Abingdon, MD"
+    // quietly became Abingdon, VA — if the user named a region, a wrong one is
+    // worse than no forecast, so say which places were actually found.
+    match = results.find((r) => matchesHint(r, hint));
+    if (!match) {
+      const found = results.map((r) => [r.name, r.admin1, r.country_code].filter(Boolean).join(", "));
+      throw new Error(`Couldn't find "${raw}". Open-Meteo knows: ${found.join(" · ")}.`);
+    }
+  }
 
   const place = {
     latitude: match.latitude,

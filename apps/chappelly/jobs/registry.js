@@ -1,5 +1,6 @@
 import { runReminder } from "./reminder.js";
 import { runWeather } from "./weather.js";
+import { runNews } from "./news.js";
 
 /**
  * What kinds of post a cron entry can be. An entry's `job` field names one of
@@ -16,6 +17,7 @@ export const DEFAULT_JOB = "reminder";
 export const JOB_RUNNERS = {
   reminder: runReminder,
   weather: runWeather,
+  news: runNews,
 };
 
 export const JOB_TYPES = Object.keys(JOB_RUNNERS);
