@@ -8,7 +8,7 @@ import { getEventUrlFromHtml, getMogoEventPage, getMogoWikiEvents } from "./getE
 import { postEvent } from "./postEvent.js";
 import { postFutureEventsToDiscord } from "./postFutureEvents.js";
 import { postNewFreeDiceLinks } from "./postFreeDiceLinks.js";
-import { postWeeklyPredictions } from "./postWeeklyPredictions.js";
+import { postWeeklyPredictions, getUpcomingMondayEstDate } from "./postWeeklyPredictions.js";
 import { postCollectibleSpoilers } from "./postCollectibleSpoilers.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
@@ -430,6 +430,11 @@ const JOBS = [
             days: [0], // window opens Sunday evening, spills into Monday
         }),
         run: async ({ client }) => {
+            // Skip quietly once the week is recorded, like daily-post's
+            // isAlreadyPosted — otherwise every remaining retry slot logs a run.
+            const { weekly } = await getLastPosts(client);
+            if (weekly === getUpcomingMondayEstDate()) return;
+
             console.log("🔮 Attempting weekly predictions post...");
             await postWeeklyPredictions(client);
         },
