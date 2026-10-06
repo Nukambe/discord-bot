@@ -44,7 +44,7 @@ export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
  * Seed env, posted the first time the channel is empty. Cron entries are keyed
  * by id under `crons`; each is
  *   { enabled, job?, times: ["HH:mm" ET], days: [0-6, 0 = Sun], channel, message, gif, mentions,
- *     button, everyDays?, lastRun?, location?, feeds?, runOnStart?, dates?, image? }
+ *     button, everyDays?, lastRun?, location?, feeds?, runOnStart?, dates?, image?, source?, games? }
  * where `mentions` lists env key names (KING_USER_ID) or raw user ids, an
  * empty `channel` falls back to REMINDER_CHANNEL_ID, `gif` (a URL) goes on
  * its own line under the message so Discord embeds it, and `image` names a
@@ -52,8 +52,10 @@ export const PATH_PATTERN = /^[A-Za-z0-9_-]+(\.[A-Za-z0-9_-]+)*$/;
  *
  * `job` picks what the entry posts (see jobs/registry.js): "reminder" when
  * unset — message, gif and confirm button — "weather", which posts today's
- * forecast for `location` (or WEATHER_LOCATION) and ignores gif/button, or
- * "news", which posts whatever is new in `feeds` and ignores gif/button too.
+ * forecast for `location` (or WEATHER_LOCATION) and ignores gif/button,
+ * "news", which posts whatever is new in `feeds` and ignores gif/button too, or
+ * "streams", which reads the game schedule at `source`, stores it as `games`
+ * and posts each game's link mentioning `mentions` as it starts.
  *
  * `runOnStart` fires the cron once when the bot boots, in addition to its
  * times. Only a job that can tell it has already posted should use it — news
@@ -148,6 +150,20 @@ export const defaultEnv = () => ({
       message: "",
       mentions: [],
       button: "",
+    },
+    // Reads the day's NBA schedule at 10am, posts the slate, and pings KING in
+    // the same channel as each game starts. `games` is written by the job.
+    nba: {
+      enabled: true,
+      job: "streams",
+      times: ["10:00"],
+      days: [...ALL_DAYS],
+      channel: "1556857637323407378",
+      source: "https://methstreams.gs/league/nbastreams",
+      message: "🏀 Today's NBA games:",
+      mentions: ["KING_USER_ID"],
+      button: "",
+      games: [],
     },
   },
   ts: Date.now(),

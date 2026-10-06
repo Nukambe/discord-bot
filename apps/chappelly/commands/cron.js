@@ -21,8 +21,10 @@ import {
 } from "../schedule.js";
 import { resolveChannelId, resolveMentions } from "../jobs/common.js";
 import { describeFeeds } from "../jobs/news.js";
+import { describeGames } from "../jobs/streams.js";
 import { runJob, jobTypeOf, JOB_TYPES, DEFAULT_JOB } from "../jobs/registry.js";
 import { FEED_PRESETS } from "../news.js";
+import { DEFAULT_SOURCE } from "../streams.js";
 import { listMedia, resolveMedia } from "../media.js";
 import { toEstDateString } from "../../../util/dateUtils.js";
 
@@ -82,15 +84,19 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
 
   const weather = job === "weather";
   const news = job === "news";
+  const streams = job === "streams";
 
   const headerLabel = weather
     ? "Line above the forecast (optional)"
     : news
       ? "Line above the articles (optional)"
-      : "Message (optional if the cron has a gif)";
+      : streams
+        ? "Line above the day's games (optional)"
+        : "Message (optional if the cron has a gif)";
 
-  // Neither a forecast nor a news batch has anything to confirm, so the fifth
-  // input (five is the modal cap) goes to whatever that job actually needs.
+  // Neither a forecast, a news batch nor a game schedule has anything to
+  // confirm, so the fifth input (five is the modal cap) goes to whatever that
+  // job actually needs.
   const lastField = weather
     ? field("location", "Location (blank = WEATHER_LOCATION)", cron?.location, { required: false, placeholder: "Rock Hill, SC" })
     : news
@@ -98,7 +104,12 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
           required: true,
           placeholder: Object.keys(FEED_PRESETS).slice(0, 3).join(", "),
         })
-      : field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false });
+      : streams
+        ? field("source", "Schedule page (methstreams league URL)", cron?.source ?? DEFAULT_SOURCE, {
+            required: true,
+            placeholder: DEFAULT_SOURCE,
+          })
+        : field("button", "Button label (blank = no button)", cron?.button ?? "YES", { required: false });
 
   return new ModalBuilder()
     .setCustomId(`${MODAL_PREFIX}${id}:${channelId || NONE}:${everyDays ?? NONE}:${job}`)
@@ -112,7 +123,7 @@ function buildCronModal(id, cron, channelId, everyDays, job) {
       field(
         "mentions",
         "Mentions (env keys or user ids, comma-sep)",
-        (cron?.mentions ?? (weather || news ? [] : ["KING_USER_ID", "QUEEN_USER_ID"])).join(", "),
+        (cron?.mentions ?? (weather || news ? [] : streams ? ["KING_USER_ID"] : ["KING_USER_ID", "QUEEN_USER_ID"])).join(", "),
         { required: false },
       ),
       lastField,
@@ -145,6 +156,9 @@ function describeCron(env, id, cron) {
     lines.push(`• location: ${cron.location || env.WEATHER_LOCATION || "— (set WEATHER_LOCATION)"}`);
   } else if (job === "news") {
     lines.push(`• feeds: ${describeFeeds(cron) || "— (none set)"}`);
+  } else if (job === "streams") {
+    lines.push(`• source: <${cron.source || DEFAULT_SOURCE}>`);
+    lines.push(`• games: ${describeGames(cron)}`);
   } else {
     lines.push(`• button: ${cron.button ? `\`${cron.button}\`` : "none"}`);
   }
@@ -165,6 +179,7 @@ export async function handleCronModalSubmit(interaction) {
   const job = JOB_TYPES.includes(jobToken) ? jobToken : DEFAULT_JOB;
   const weather = job === "weather";
   const news = job === "news";
+  const streams = job === "streams";
 
   await interaction.deferReply({ ephemeral: true });
 
@@ -187,16 +202,17 @@ export async function handleCronModalSubmit(interaction) {
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  // Weather and news crons traded the button input away (see buildCronModal).
-  const button = weather || news ? "" : interaction.fields.getTextInputValue("button").trim();
+  // Weather, news and streams crons traded the button input away (see buildCronModal).
+  const button = weather || news || streams ? "" : interaction.fields.getTextInputValue("button").trim();
   const location = weather ? interaction.fields.getTextInputValue("location").trim() : null;
   const feeds = news
     ? interaction.fields.getTextInputValue("feeds").split(",").map((f) => f.trim()).filter(Boolean)
     : null;
+  const source = streams ? interaction.fields.getTextInputValue("source").trim() : null;
 
   const existing = currentEnv().crons?.[id];
-  // A weather or news cron brings its own content; a reminder needs words or a gif.
-  if (!weather && !news && !message && !existing?.gif && !existing?.image) {
+  // A weather, news or streams cron brings its own content; a reminder needs words or a gif.
+  if (!weather && !news && !streams && !message && !existing?.gif && !existing?.image) {
     await interaction.editReply("❌ The message can't be empty unless the cron has a gif (`/cron gif`) or image (`/cron image`).");
     return;
   }
@@ -216,6 +232,11 @@ export async function handleCronModalSubmit(interaction) {
       );
       return;
     }
+  }
+
+  if (streams && !URL_PATTERN.test(source)) {
+    await interaction.editReply(`❌ The schedule page has to be a URL, e.g. <${DEFAULT_SOURCE}>.`);
+    return;
   }
 
   // Options given on the slash command win; otherwise keep what the cron had.
@@ -241,6 +262,13 @@ export async function handleCronModalSubmit(interaction) {
   else delete record.location;
   if (news) record.feeds = feeds;
   else delete record.feeds;
+  // `games` is the job's own state; it stays put across edits (the next run
+  // replaces it) and goes when the cron stops being a streams cron.
+  if (streams) record.source = source;
+  else {
+    delete record.source;
+    delete record.games;
+  }
   if (everyDays) {
     record.everyDays = everyDays;
     // A cron that just became an interval counts today as its last run, so
@@ -462,9 +490,12 @@ export default {
         }
         // "Nothing new" is the ordinary outcome for a news cron most of the
         // time, not a misconfiguration, so it doesn't send anyone to the logs.
-        const quiet = jobTypeOf(cron) === "news"
+        const type = jobTypeOf(cron);
+        const quiet = type === "news"
           ? `ℹ️ \`${id}\` found nothing new in its feeds — everything is already in the channel.`
-          : `⚠️ \`${id}\` didn't post — check the channel / REMINDER_CHANNEL_ID (see logs).`;
+          : type === "streams"
+            ? `ℹ️ \`${id}\` found no games today — stored: ${describeGames(currentEnv().crons?.[id])}.`
+            : `⚠️ \`${id}\` didn't post — check the channel / REMINDER_CHANNEL_ID (see logs).`;
         await interaction.editReply(
           posted
             ? `✅ Fired \`${id}\`: ${posted.url}${normalizeEveryDays(cron.everyDays) ? " (test run — the every-N-days timer is untouched)" : ""}`

@@ -14,7 +14,8 @@ const ALBUM_PREVIEWS_CHANNEL_ID = "1449448347965460553";
 
 /** Discord's per-message caps; anything past them spills into follow-up messages. */
 const MAX_EMBEDS_PER_MESSAGE = 10;
-const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+// Discord allows 10 attachments, but its 10-image grid crops the top of the last tile.
+const MAX_ATTACHMENTS_PER_MESSAGE = 9;
 
 // Maps a post's category tag (from parseFutureEventPost's `tags`) to a target channel
 // and an optional emoji wrapped around the post's title in the message content (the wiki

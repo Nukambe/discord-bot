@@ -5,8 +5,11 @@ import { getDb, updateLastPosts } from "./db.js";
 /** Live channel for collectible spoiler posts. Hardcoded (not env-based), like free dice. */
 const SPOILERS_CHANNEL_ID = "1449448347965460553";
 
-/** Discord's per-message attachment cap; extra images spill into follow-up messages. */
-const MAX_ATTACHMENTS_PER_MESSAGE = 10;
+/**
+ * Images per message; extra images spill into follow-up messages. Discord allows 10, but its
+ * 10-image grid crops the top of the last tile, so a grid stops at 9.
+ */
+const MAX_ATTACHMENTS_PER_MESSAGE = 9;
 
 /**
  * How many of each category's newest items the *first* ever run posts, before any seen-item
@@ -24,8 +27,8 @@ const DEBUG_POST_COUNT = 2;
 
 /**
  * Post any collectibles that have appeared on the wiki's dice skins / shields / tokens
- * category pages since the last check, as one embed listing the new names plus the
- * artwork attached as images.
+ * category pages since the last check: one plain message per category listing the new names,
+ * with that category's artwork attached underneath.
  *
  * "Since the last check" can't be a date comparison — the wiki exposes no date on an item
  * (see parseCollectibleItems), so this job remembers the item ids it has already seen in
@@ -145,13 +148,14 @@ async function recordSeen(client, seenByCategory, nextSeen) {
 }
 
 /**
- * Build and send the post: one embed holding the name lists, with the artwork attached.
+ * Build and send the post: one plain message per category — its `__Heading__` and a bulleted
+ * name list — with that category's artwork attached, so each grid sits under its own list.
+ * The `## Upcoming Collectibles 👀?` title and source link lead the first category's message.
  *
- * The embed mirrors the daily post's layout — `source:` line in the message content, one
- * `__**Heading**__` field per section, literal "•" bullets rather than markdown list syntax
- * (some mobile clients fold a markdown list item into the line above it), and a zero-width
- * space closing every field but the last, which is what puts a blank line between sections
- * on iOS as well as desktop.
+ * Plain messages rather than an embed because an embed always renders below a message's
+ * attachments and holds one list for the whole post, so the images couldn't be interleaved
+ * with their categories. A category with more than MAX_ATTACHMENTS_PER_MESSAGE images
+ * continues in attachment-only messages before the next category starts.
  *
  * @param {object} args
  * @param {import('discord.js').Client} args.client
@@ -172,37 +176,24 @@ async function sendSpoilerPost({ client, sections, debug }) {
   });
   if (!channel) return false;
 
-  const fields = sections.map(({ heading, items }) => ({
-    name: `__**${heading}**__`,
-    value: trimTo(
-      items.map((item) => `• ${item.name}${item.image ? "" : " _(image unavailable)_"}`).join("\n"),
-      1024
-    ),
-    inline: false,
-  }));
-  for (const field of fields.slice(0, -1)) field.value = trimTo(field.value, 1022) + "\n​";
-
-  const embed = {
-    title: "👀 Upcoming Collectibles?",
-    url: COLLECTIBLES_SOURCE_URL,
-    fields,
-  };
-
-  const files = sections
-    .flatMap(({ items }) => items)
-    .filter((item) => item.image)
-    .map((item) => new AttachmentBuilder(item.image.data, { name: item.image.name }));
-
-  const batches = chunk(files, MAX_ATTACHMENTS_PER_MESSAGE);
+  const header = `## Upcoming Collectibles 👀?\nsource: <${COLLECTIBLES_SOURCE_URL}>\n\n`;
+  let fileCount = 0;
   try {
-    await channel.send({
-      content: `source: <${COLLECTIBLES_SOURCE_URL}>`,
-      embeds: [embed],
-      files: batches[0] ?? [],
-    });
-    // More images than one message can carry: the rest follow as attachment-only messages
-    // so the whole batch still lands under the same heading list.
-    for (const batch of batches.slice(1)) await channel.send({ files: batch });
+    for (const [i, { heading, items }] of sections.entries()) {
+      const list = items
+        .map((item) => `- ${item.name}${item.image ? "" : " _(image unavailable)_"}`)
+        .join("\n");
+      const content = trimTo(`${i === 0 ? header : ""}__${heading}__\n${list}`, 2000);
+
+      const files = items
+        .filter((item) => item.image)
+        .map((item) => new AttachmentBuilder(item.image.data, { name: item.image.name }));
+      fileCount += files.length;
+
+      const batches = chunk(files, MAX_ATTACHMENTS_PER_MESSAGE);
+      await channel.send({ content, files: batches[0] ?? [] });
+      for (const batch of batches.slice(1)) await channel.send({ files: batch });
+    }
   } catch (err) {
     console.error("💥 Failed to post collectible spoilers:", err?.message || err);
     return false;
@@ -210,7 +201,7 @@ async function sendSpoilerPost({ client, sections, debug }) {
 
   const total = sections.reduce((n, s) => n + s.items.length, 0);
   console.log(
-    `✅ Posted ${total} collectible(s) (${files.length} image(s)) to ${debug ? "TEST_CHANNEL_ID" : "the spoilers channel"}=${channelId}`
+    `✅ Posted ${total} collectible(s) (${fileCount} image(s)) to ${debug ? "TEST_CHANNEL_ID" : "the spoilers channel"}=${channelId}`
   );
   return true;
 }

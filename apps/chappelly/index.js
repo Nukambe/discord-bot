@@ -8,7 +8,7 @@ import { startScheduler } from "./cronScheduler.js";
 import { cronSlots } from "./schedule.js";
 import { initEnv, fetchEnvChannel, onEnvChange, defaultEnv } from "./env.js";
 import { handleReminderButton, BUTTON_PREFIX } from "./jobs/reminder.js";
-import { runJob, jobTypeOf } from "./jobs/registry.js";
+import { runJob, jobTypeOf, extraJobsFor } from "./jobs/registry.js";
 import { handleCronModalSubmit, MODAL_PREFIX } from "./commands/cron.js";
 
 /**
@@ -29,16 +29,21 @@ import { handleCronModalSubmit, MODAL_PREFIX } from "./commands/cron.js";
  *
  * Which job an entry runs is data too: `job` names a runner in the registry
  * ("reminder" when unset, "weather" for a forecast post, "news" for a feed
- * sweep), so adding a kind of post means a new module there, not a change here.
+ * sweep, "streams" for a game schedule), so adding a kind of post means a new
+ * module there, not a change here. A kind may also contribute one-off jobs of
+ * its own (a streams cron's per-game posts), which ride along after its entry.
  */
 const buildJobs = (env) =>
   Object.entries(env.crons ?? {})
     .filter(([, cron]) => cron && typeof cron === "object" && cron.enabled !== false)
-    .map(([id, cron]) => ({
-      name: `${id} (${jobTypeOf(cron)})`,
-      slots: () => cronSlots(cron),
-      run: (ctx) => runJob(ctx, id, cron),
-    }));
+    .flatMap(([id, cron]) => [
+      {
+        name: `${id} (${jobTypeOf(cron)})`,
+        slots: () => cronSlots(cron),
+        run: (ctx) => runJob(ctx, id, cron),
+      },
+      ...extraJobsFor(id, cron),
+    ]);
 
 /**
  * Fire every cron marked `runOnStart` once, as the bot comes up, on top of its

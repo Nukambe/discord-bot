@@ -16,6 +16,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-run safely, checks its channel for today's log message first.
 
 ### Changed
+- Collectible spoilers are now plain messages instead of an embed, titled
+  `## Upcoming Collectibles 👀?`: one message per category with its name list
+  and that category's artwork clustered right underneath, rather than every
+  image piled below one embed.
+- Image grids (collectible spoilers and news-sweep galleries) hold at most 9
+  images per message — Discord's 10-image grid crops the top of the last tile.
 - The scheduler no longer runs on node-cron. It ticks once a minute on its own
   timer and runs every job whose slot fell inside the minutes since the last
   tick — at most once per job — so a late timer, a stalled event loop or a
