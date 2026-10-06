@@ -43,13 +43,30 @@ const hostOf = (url) => {
 
 const timeLabel = (game) => (game.time ? `${formatStartTime(game.time)} ET` : "TBD");
 
-/** The day's slate: one line per game, time then linked matchup. */
-export function buildSlateEmbed(games, source) {
+/**
+ * A game from the ESPN fallback carries `direct: false` and links to the league
+ * schedule page rather than its own stream page (see ../streams.js); games
+ * stored before the fallback existed have no flag and are direct.
+ */
+const isDirect = (game) => game.direct !== false;
+
+/**
+ * The day's slate: one line per game, time then linked matchup. When the
+ * schedule came from ESPN every link is the same league page, so it is given
+ * once below the list instead of on each line.
+ */
+export function buildSlateEmbed(games, source, via) {
+  const lines = games.map((game) =>
+    `\`${timeLabel(game).padEnd(11)}\` ${isDirect(game) ? `[${game.title}](${game.url})` : game.title}`,
+  );
+  if (!games.every(isDirect)) lines.push("", `Streams: ${source}`);
   return new EmbedBuilder()
     .setColor(EMBED_COLOR)
     .setTitle(`Today's games (${games.length})`)
-    .setDescription(games.map((game) => `\`${timeLabel(game).padEnd(11)}\` [${game.title}](${game.url})`).join("\n"))
-    .setFooter({ text: `${hostOf(source)} · stream links go live about an hour before each start` });
+    .setDescription(lines.join("\n"))
+    .setFooter({
+      text: `${via === "ESPN" ? "Schedule via ESPN" : hostOf(source)} · stream links go live about an hour before each start`,
+    });
 }
 
 export function buildGameEmbed(game) {
@@ -57,7 +74,11 @@ export function buildGameEmbed(game) {
     .setColor(EMBED_COLOR)
     .setTitle(game.title)
     .setURL(game.url)
-    .setDescription(`Starts ${timeLabel(game)} — click the title to watch.`)
+    .setDescription(
+      isDirect(game)
+        ? `Starts ${timeLabel(game)} — click the title to watch.`
+        : `Starts ${timeLabel(game)} — click the title for the streams page and pick this game.`,
+    )
     .setFooter({ text: hostOf(game.url) });
 }
 
@@ -101,17 +122,18 @@ export async function runStreams({ client }, id, { force = false } = {}) {
   if (!channel) return null;
 
   const source = String(cron.source || DEFAULT_SOURCE).trim();
-  const games = (await getSchedule(source)).filter((game) => game.date >= today);
+  const { games: fetched, via } = await getSchedule(source);
+  const games = fetched.filter((game) => game.date >= today);
   await storeGames(client, id, games);
 
   const todays = games.filter((game) => game.date === today);
-  console.log(`📺 [chappelly] Streams "${id}": ${games.length} upcoming game(s), ${todays.length} today.`);
+  console.log(`📺 [chappelly] Streams "${id}" (via ${via}): ${games.length} upcoming game(s), ${todays.length} today.`);
   if (!todays.length) return null;
 
   const header = String(cron.message ?? "").trim();
   const message = await channel.send({
     content: header || undefined,
-    embeds: [buildSlateEmbed(todays, source)],
+    embeds: [buildSlateEmbed(todays, source, via)],
     allowedMentions: { parse: [] },
   });
   if (everyDays && !force) await recordCronRun(client, id, today);
