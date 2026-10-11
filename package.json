@@ -18,6 +18,7 @@
     "start": "node index.js",
     "build:familygo": "node build/familygo/build.mjs",
     "spotify:auth": "node apps/twitch/lib/spotifyAuthBootstrap.js",
+    "streamviewer": "node apps/streamviewer/index.js",
     "twitchext:ebs": "node apps/twitchext/ebs/index.js",
     "twitchext:companion": "node apps/twitchext/companion/index.js",
     "twitchext:calibrate": "node apps/twitchext/companion/calibrate.js",
