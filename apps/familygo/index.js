@@ -10,6 +10,7 @@ import { postFutureEventsToDiscord } from "./postFutureEvents.js";
 import { postNewFreeDiceLinks } from "./postFreeDiceLinks.js";
 import { postWeeklyPredictions, getUpcomingMondayEstDate } from "./postWeeklyPredictions.js";
 import { postCollectibleSpoilers } from "./postCollectibleSpoilers.js";
+import { postDstReminder } from "./postDstReminder.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -398,6 +399,20 @@ const JOBS = [
             } catch (e) {
                 console.error("Failed to parse state while clearing skip:", e);
             }
+        },
+    },
+
+    /**
+     * Daylight saving reminder: midnight ET every day, posting to #general only on
+     * the two days a year the clocks change (decided from the timezone data, see
+     * postDstReminder.js). Needs no browser, so it runs ahead of the daily post's
+     * midnight retry. Deduped via db.lastPosts.dst, so the startup catch-up is safe.
+     */
+    {
+        name: "dst-reminder",
+        slots: () => atTime(0, 0),
+        run: async ({ client }) => {
+            await postDstReminder(client);
         },
     },
 

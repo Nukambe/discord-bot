@@ -7,6 +7,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Daylight saving reminder: at midnight ET on the days the clocks change
+  (next: Sunday Nov 1, 2026), the bot posts a reminder in #general with the
+  shifted quick wins and tournament reset times. A bot started later that day
+  still posts it, once.
 - `/post-daily date:` picks which day's events to post — the picker offers
   yesterday through two days out, and a typed `10/20`, `Oct 20` or
   `2026-10-20` works too. Left empty it posts the day the schedule is working
