@@ -41,7 +41,9 @@ export async function setSkipNextRotation(client) {
   const lastMsg = await fetchLastMessage(rotChan);
   const lastState = parseStateFromMessage(lastMsg?.content);
 
+  // Spread rather than rebuilt so a pinned next pick (see setNextGiftee) survives the skip.
   const newState = {
+    ...lastState,
     remaining: lastState?.remaining || [],
     pool: lastState?.pool || [],
     skip: true,
@@ -49,6 +51,42 @@ export async function setSkipNextRotation(client) {
   };
 
   await rotChan.send("⏭️ **SKIP FLAG SET** - The next scheduled rotation will be skipped. STATE: " + JSON.stringify(newState));
+}
+
+/**
+ * Pin who the next rotation picks, ahead of the cycle — or clear the pin with `null`.
+ *
+ * Stored as `next` on the rotation channel's STATE line, alongside the skip flag, so it
+ * holds through restarts and pauses: whichever rotation runs next (scheduled or a plain
+ * /gift-rotation) picks them, and the pin is cleared once it's used. The person must be a
+ * giftee; who's left in the cycle doesn't matter (see runGiftRotation).
+ * @param {import('discord.js').Client} client
+ * @param {string|null} gifteeId
+ * @returns {Promise<{id: string, channel: string, name?: string}|null>} The pinned giftee.
+ */
+export async function setNextGiftee(client, gifteeId) {
+  const { giftees } = await getGiftPools(client);
+  const giftee = gifteeId ? giftees.find(g => g.id === gifteeId) : null;
+  if (gifteeId && !giftee) throw new Error(`${gifteeId} isn't on the giftee roster.`);
+
+  const rotChan = await client.channels.fetch(process.env.GIFT_ROTATION_CHANNEL_ID).catch(() => null);
+  if (!isTextish(rotChan)) throw new Error(`Rotation channel ${process.env.GIFT_ROTATION_CHANNEL_ID} not found.`);
+
+  const lastState = parseStateFromMessage((await fetchLastMessage(rotChan))?.content);
+  const { next: _previous, ...rest } = lastState ?? {};
+  const newState = {
+    ...rest,
+    remaining: lastState?.remaining || [],
+    pool: lastState?.pool || [],
+    ...(giftee ? { next: giftee.id } : {}),
+    ts: Date.now(),
+  };
+
+  const heading = giftee
+    ? `🎯 **NEXT PICK SET** - ${await formatUserRef(giftee, rotChan.guild ?? null)} will be chosen at the next rotation.`
+    : "🎯 **NEXT PICK CLEARED** - The next rotation picks from the cycle as usual.";
+  await rotChan.send(`${heading} STATE: ${JSON.stringify(newState)}`);
+  return giftee;
 }
 
 /**
@@ -102,19 +140,23 @@ export async function rotatedToday(client) {
  * channel's last message, normalized against the current giftee roster. Used by
  * /gift-pool view to show the live cycle alongside the rosters.
  * @param {import('discord.js').Client} client
- * @returns {Promise<{ remaining: string[], skip: boolean }>}
+ * @returns {Promise<{ remaining: string[], skip: boolean, next: string|null }>}
  */
 export async function getRotationState(client) {
   const { giftees } = await getGiftPools(client);
   const gifteeIds = new Set(giftees.map(g => g.id));
 
   const rotChan = await client.channels.fetch(process.env.GIFT_ROTATION_CHANNEL_ID).catch(() => null);
-  if (!isTextish(rotChan)) return { remaining: [...gifteeIds], skip: false };
+  if (!isTextish(rotChan)) return { remaining: [...gifteeIds], skip: false, next: null };
 
   const lastState = parseStateFromMessage((await fetchLastMessage(rotChan))?.content);
   const remaining = (lastState?.remaining ?? []).filter(id => gifteeIds.has(id));
   // An empty (or fully stale) remaining list means the cycle resets on the next pick.
-  return { remaining: remaining.length ? remaining : [...gifteeIds], skip: lastState?.skip === true };
+  return {
+    remaining: remaining.length ? remaining : [...gifteeIds],
+    skip: lastState?.skip === true,
+    next: gifteeIds.has(lastState?.next) ? lastState.next : null,
+  };
 }
 
 /**
@@ -122,11 +164,15 @@ export async function getRotationState(client) {
  * - Only giftees can be selected.
  * - Gifters this round = (giftees minus chosen) + the gifter roster.
  * - Rotation STATE only tracks giftees.
+ * - The winner is `opts.winner` when given, else the pinned next pick (setNextGiftee), else
+ *   random from whoever is left this cycle. A chosen winner is picked regardless of the
+ *   cycle: if their turn is still ahead of them it's used up, and otherwise the pick is an
+ *   extra one and the cycle is left exactly as it was.
  * @param {import('discord.js').Client} client
- * @param {{ debug?: boolean }} [opts]
+ * @param {{ debug?: boolean, winner?: string }} [opts] - winner: a giftee id to pick.
  */
 export async function runGiftRotation(client, opts = {}) {
-  const { debug = false } = opts;
+  const { debug = false, winner = null } = opts;
   const title = ROTATION_TITLE;
   const rotationChannelId = process.env.GIFT_ROTATION_CHANNEL_ID;
 
@@ -151,12 +197,23 @@ export async function runGiftRotation(client, opts = {}) {
   const lastState = parseStateFromMessage(lastMsg?.content);
 
   const poolIds = new Set(validPool.map(x => x.id)); // ONLY giftees are in the cycle
-  let remaining = (lastState?.remaining ?? []).filter(id => poolIds.has(id));
-  if (remaining.length === 0) remaining = [...poolIds];
+  if (winner && !poolIds.has(winner)) throw new Error(`${winner} isn't on the giftee roster.`);
+  const cycle = (lastState?.remaining ?? []).filter(id => poolIds.has(id));
+  const pinned = poolIds.has(lastState?.next) ? lastState.next : null;
 
-  // 4) Choose from the giftees left this cycle
-  const chosenId = randomFromArray(remaining);
-  remaining = remaining.filter(id => id !== chosenId);
+  // 4) Choose: the requested winner, else the pinned pick, else from the giftees left this cycle
+  let chosenId;
+  let remaining;
+  if (winner || pinned) {
+    chosenId = winner || pinned;
+    remaining = cycle.filter(id => id !== chosenId); // an empty cycle stays empty → resets next pick
+  } else {
+    const pickFrom = cycle.length ? cycle : [...poolIds];
+    chosenId = randomFromArray(pickFrom);
+    remaining = pickFrom.filter(id => id !== chosenId);
+  }
+  // A pin someone else's hand-picked turn didn't use is still owed to them.
+  const nextPinned = pinned && pinned !== chosenId ? pinned : null;
 
   // 5) Build references
   const chosen = validPool.find(p => p.id === chosenId);
@@ -174,7 +231,7 @@ export async function runGiftRotation(client, opts = {}) {
   const giftersLine = giftersRefs.join(", ") || "—";
 
   // 6) Post rotation log with updated STATE (giftees only)
-  const state = { remaining, pool: [...poolIds], ts: Date.now() };
+  const state = { remaining, pool: [...poolIds], ...(nextPinned ? { next: nextPinned } : {}), ts: Date.now() };
   const remainingRefs = await Promise.all(
     remaining.map(id => {
       const p = validPool.find(x => x.id === id);
@@ -186,10 +243,14 @@ export async function runGiftRotation(client, opts = {}) {
   const exemptRefs = await Promise.all(exemptPool.map(p => formatUserRef(p, guild)));
   const exemptLine = exemptRefs.length ? exemptRefs.join(", ") : "—";
 
+  const nextLine = nextPinned
+    ? [`**Next pick (set by hand):** ${await formatUserRef(validPool.find(p => p.id === nextPinned), guild)}`]
+    : [];
   const logLines = [
     title,
-    `**Chosen:** ${chosenRef}`,
+    `**Chosen:** ${chosenRef}${winner || pinned ? " (picked by hand)" : ""}`,
     `**Remaining this cycle (giftees):** ${remainingLine}`,
+    ...nextLine,
     `**Exempt gifters (not selectable):** ${exemptLine}`,
     "",
     `Debug mode: ${debug ? "✅ ON (not posting in user channel)" : "❌ OFF"}`,

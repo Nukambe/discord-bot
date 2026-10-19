@@ -19,6 +19,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   Oct 1 post) are picked up from the spoilers channel on the first run.
 - `/gift-rotation force:` — picks again even though a rotation already went
   out today.
+- `/gift-rotation winner:` runs the rotation now with a chosen giftee, and
+  `/gift-rotation next:` makes a giftee the winner of the next rotation
+  without posting anything — it holds through a pause, and `next: Clear the
+  next pick` undoes it. Either way the pick ignores who's left in the cycle: a
+  giftee whose turn was still ahead uses it up, otherwise it's an extra pick
+  and the cycle carries on as it was. `/gift-pool view` shows a pinned pick.
 
 ### Fixed
 - Running `/gift-rotation` early no longer leads to a second pick at the

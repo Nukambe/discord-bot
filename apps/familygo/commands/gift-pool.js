@@ -147,6 +147,8 @@ export default {
           ...(state ? listLines(remaining) : ["• (couldn't read the rotation channel)"]),
         ];
         if (state?.skip) lines.push("", "⏭️ The next scheduled rotation is flagged to be skipped.");
+        const next = state?.next && giftees.find(g => g.id === state.next);
+        if (next) lines.push("", `🎯 Next pick (set by hand): ${describeEntry(next)}`);
 
         await interaction.editReply(lines.join("\n"));
         return;
