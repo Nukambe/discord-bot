@@ -58,7 +58,8 @@ export const defaultDb = () => ({
   // State of the most recent post per job, so a scheduled run and its manual
   // slash-command twin can't double-post (see getLastPosts/updateLastPosts).
   lastPosts: {
-    daily: null,      // dateSlug of the most recent daily events post
+    daily: [],        // dateSlugs of the recent daily events posts, newest first (a lone
+                      // string in a db written before /post-daily could pick its date)
     freeDice: [],     // one key per recently posted free-dice link: its campaign id, or
                       // urlKey() of the resolved claim link (see resolveRewardLink.js)
     newsSweep: {      // Where the wiki news sweep (postFutureEvents.js) left off:
@@ -67,11 +68,17 @@ export const defaultDb = () => ({
     },
     weekly: null,     // ET date ("YYYY-MM-DD") of the Monday whose week was last posted
                       // by the weekly predictions job (postWeeklyPredictions.js)
-    spoilers: {},     // { [wiki collectible category key]: itemIds that were on page 1 of that
-                      // category at the end of the last check (postCollectibleSpoilers.js).
-                      // A missing key means that category has never been checked, which is
-                      // what triggers its one-time silent seed; the ids are how "new" is
-                      // decided at all, since the wiki dates none of its collectibles.
+    spoilers: {},     // { [wiki collectible category key]: itemIds already seen in that
+                      // category — page 1 at the last check, then older ones, capped
+                      // (postCollectibleSpoilers.js). A missing key means that category
+                      // has never been checked, which is what triggers its one-time silent
+                      // seed; the ids are how "new" is decided at all, since the wiki dates
+                      // none of its collectibles.
+    // spoilersAwaitingArt — [{ category, itemId, name, imageUrl, since }] items posted with
+    // "(image unavailable)", re-checked every run and reposted once their artwork lands. Has
+    // no default on purpose: absent means "never built", which makes the spoilers job read
+    // the earlier posts back from its channel once, and a default here would be filled in
+    // by every other job's updateLastPosts write before that could happen.
   },
   ts: Date.now(),
 });

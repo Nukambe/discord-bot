@@ -26,6 +26,23 @@ const FIRST_RUN_POST_COUNT = { diceSkins: 0, shields: 1, tokens: 0 };
 const DEBUG_POST_COUNT = 2;
 
 /**
+ * How many item ids each category remembers. Page 1 holds ~30, so this keeps about five
+ * waves' worth — enough that an old item drifting back onto page 1 (the wiki's order wobbles
+ * at the bottom of the page) is still recognized.
+ */
+const SEEN_CAP = 150;
+
+/**
+ * How long an item posted with "(image unavailable)" keeps being checked for its artwork.
+ * Past this it's dropped quietly — Scopely uploads art within days, so an item still missing
+ * it after two months has most likely been pulled.
+ */
+const AWAITING_ART_MAX_DAYS = 60;
+
+/** Note an item's line carries when it's reposted because its artwork has landed. */
+const ART_LANDED_NOTE = " _(image now available)_";
+
+/**
  * Post any collectibles that have appeared on the wiki's dice skins / shields / tokens
  * category pages since the last check: one plain message per category listing the new names,
  * with that category's artwork attached underneath.
@@ -33,11 +50,17 @@ const DEBUG_POST_COUNT = 2;
  * "Since the last check" can't be a date comparison — the wiki exposes no date on an item
  * (see parseCollectibleItems), so this job remembers the item ids it has already seen in
  * `db.lastPosts.spoilers` and treats anything else on page 1 as new. The stored list is the
- * ids that were on page 1 at the end of the previous run, which is naturally bounded (~30
- * per category) and enough: the pages are newest-first, so an item only falls out of the
- * list once 30 newer items have pushed it off page 1, long after it stopped being a spoiler.
+ * ids on page 1 this run followed by the ones remembered before, capped at SEEN_CAP. It used
+ * to be page 1 alone, which forgot an item the moment newer ones pushed it to slot 31 — and
+ * the bottom of page 1 isn't stable, so an old token (Speedy, 78196) drifted back on a few
+ * days later and was announced as new.
+ *
  * A watermark ("highest id seen") would be smaller but wrong — ids inside one release wave
- * are interleaved, so a genuinely new item can carry an id below one already recorded.
+ * are interleaved, so a genuinely new item can carry an id below one already recorded. A
+ * *floor* is safe, though: anything below the oldest id remembered predates every wave this
+ * job has seen, so it's old whether or not it's in the list (see isNewItem). The floor alone
+ * wouldn't have caught Speedy, which sat in the same old wave as ids still remembered then;
+ * the longer memory is the fix, the floor a backstop.
  *
  * Artwork goes out as real attachments rather than embed images for two reasons: Discord
  * clusters multiple attachments into a grid (an embed holds one image each, four at most),
@@ -46,8 +69,9 @@ const DEBUG_POST_COUNT = 2;
  *
  * An item the wiki has listed but Scopely hasn't uploaded artwork for yet gets its name with
  * an "(image unavailable)" note — the record always carries an image URL, but the CDN 404s
- * until the asset lands. Such an item is recorded as seen like any other and is never
- * re-announced when its artwork does arrive.
+ * until the asset lands. Such an item is also remembered in `db.lastPosts.spoilersAwaitingArt`,
+ * and every run re-checks those URLs (plain HTTPS, no browser); once one answers, the item is
+ * posted again in its category with its artwork and an "(image now available)" note.
  *
  * Called from the nightly 7:30pm cron (the 'collectible-spoilers' job in index.js) and the
  * manual /spoilers command.
@@ -74,6 +98,7 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
   // indistinguishable from "never checked", which would re-run the first-run seed (and its
   // post) every night for as long as the db stayed unreachable. Better to skip a night.
   let seenByCategory = {};
+  let awaitingArt = [];
   if (!debug) {
     let db;
     try {
@@ -84,11 +109,14 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
     }
     // A null db means it hasn't been created yet, which genuinely is a first run.
     seenByCategory = db?.lastPosts?.spoilers ?? {};
+
+    // Absent (rather than empty) means the db predates the list: the items already posted
+    // without artwork are only recorded in the channel, so they're read back from there once.
+    const stored = db?.lastPosts?.spoilersAwaitingArt;
+    awaitingArt = Array.isArray(stored) ? stored : await seedAwaitingArtFromChannel(client, byCategory);
   }
 
-  // Sections are built in COLLECTIBLE_CATEGORIES order so the post's headings always read
-  // Dice Skins → Shields → Tokens, whichever categories happen to have something new.
-  const sections = [];
+  const newByCategory = new Map();
   const nextSeen = {};
   for (const { key, heading } of COLLECTIBLE_CATEGORIES) {
     const items = byCategory.get(key);
@@ -98,7 +126,7 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
     const newItems = debug
       ? items.slice(0, DEBUG_POST_COUNT)
       : seen
-        ? items.filter((item) => !seen.includes(item.itemId))
+        ? items.filter((item) => isNewItem(item, seen))
         : items.slice(0, FIRST_RUN_POST_COUNT[key] ?? 0);
 
     if (!seen && !debug) {
@@ -109,42 +137,169 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
       console.log(`ℹ️ ${heading}: ${newItems.length} new item(s)`);
     }
 
-    nextSeen[key] = items.map((item) => item.itemId);
-    if (newItems.length) sections.push({ heading, items: newItems });
+    nextSeen[key] = mergeSeen(items, seen);
+    if (newItems.length) newByCategory.set(key, newItems);
   }
+
+  // One request per new item decides available vs "(image unavailable)", and downloads the
+  // artwork for attaching. Plain HTTPS against the asset CDN — no Chrome needed.
+  for (const items of newByCategory.values()) {
+    for (const item of items) item.image = await downloadItemImage(item);
+  }
+
+  // Items posted earlier without artwork get the same check; the ones that answer now are
+  // reposted under their category, after whatever is new there. Debug leaves the list alone.
+  const landedByCategory = new Map();
+  const stillAwaiting = [];
+  if (!debug) {
+    const expiry = Date.now() - AWAITING_ART_MAX_DAYS * 24 * 60 * 60 * 1000;
+    for (const entry of awaitingArt) {
+      if (Date.parse(entry.since) < expiry) {
+        console.log(`⌛ Giving up on artwork for "${entry.name}" — still missing after ${AWAITING_ART_MAX_DAYS} days`);
+        continue;
+      }
+      // The page's current record wins over the stored URL, in case the wiki has since fixed it.
+      const current = byCategory.get(entry.category)?.find((item) => item.itemId === entry.itemId);
+      const item = {
+        itemId: entry.itemId,
+        name: current?.name ?? entry.name,
+        imageUrl: current?.imageUrl || entry.imageUrl,
+        artLanded: true,
+      };
+      item.image = await downloadItemImage(item);
+      if (!item.image) {
+        stillAwaiting.push(entry);
+        continue;
+      }
+      console.log(`🖼️ Artwork landed for "${item.name}" — reposting it`);
+      landedByCategory.set(entry.category, [...(landedByCategory.get(entry.category) ?? []), item]);
+    }
+
+    const since = new Date().toISOString();
+    for (const [category, items] of newByCategory) {
+      for (const { itemId, name, imageUrl, image } of items) {
+        if (!image && imageUrl) stillAwaiting.push({ category, itemId, name, imageUrl, since });
+      }
+    }
+  }
+
+  // Sections are built in COLLECTIBLE_CATEGORIES order so the post's headings always read
+  // Dice Skins → Shields → Tokens, whichever categories happen to have something to show.
+  const sections = COLLECTIBLE_CATEGORIES
+    .map(({ key, heading }) => ({
+      heading,
+      items: [...(newByCategory.get(key) ?? []), ...(landedByCategory.get(key) ?? [])],
+    }))
+    .filter((section) => section.items.length);
 
   if (!sections.length) {
     console.log("ℹ️ No new collectibles to post");
     // Still recorded: this is what makes a first run seed silently, and it keeps the stored
-    // ids tracking page 1 as older items drop off.
-    if (!debug) await recordSeen(client, seenByCategory, nextSeen);
+    // ids tracking page 1 as newer items arrive.
+    if (!debug) await recordState(client, seenByCategory, nextSeen, stillAwaiting);
     return;
-  }
-
-  // One HEAD per new item decides available vs "(image unavailable)", then the available
-  // ones are downloaded for attaching. Plain HTTPS against the asset CDN — no Chrome needed.
-  for (const section of sections) {
-    for (const item of section.items) {
-      item.image = await downloadItemImage(item);
-    }
   }
 
   const posted = await sendSpoilerPost({ client, sections, debug });
   if (!posted) return; // send failed — leave state untouched so the next run retries
 
-  if (!debug) await recordSeen(client, seenByCategory, nextSeen);
+  if (!debug) await recordState(client, seenByCategory, nextSeen, stillAwaiting);
   console.log("🏁 Finished collectible spoilers check\n");
 };
 
 /**
- * Merge this run's per-category id lists into db.lastPosts.spoilers. Categories absent from
- * `nextSeen` (their page failed) keep whatever was stored.
+ * Whether a page-1 item is new to a category whose remembered ids are `seen`. Beyond "not in
+ * the list", an id below the oldest one remembered predates every wave this job has tracked,
+ * so it's old even if it was never on page 1 while this job was looking — a backstop for
+ * back-catalogue items the remembered list itself can't vouch for.
+ * @param {{ itemId: number }} item
+ * @param {number[]} seen
+ * @returns {boolean}
+ */
+function isNewItem(item, seen) {
+  if (seen.includes(item.itemId)) return false;
+  return !seen.length || item.itemId > Math.min(...seen);
+}
+
+/**
+ * The category's remembered ids after this run: page 1 in page order, then everything
+ * remembered before that isn't on it, capped at SEEN_CAP (the oldest-remembered fall off).
+ * @param {Array<{ itemId: number }>} items - this run's page 1
+ * @param {number[]} [seen]
+ * @returns {number[]}
+ */
+function mergeSeen(items, seen = []) {
+  return [...new Set([...items.map((item) => item.itemId), ...seen])].slice(0, SEEN_CAP);
+}
+
+/**
+ * Write this run's state: the per-category id lists merged into db.lastPosts.spoilers
+ * (categories absent from `nextSeen` — their page failed — keep whatever was stored), and
+ * the items still waiting on artwork.
  * @param {import('discord.js').Client} client
  * @param {Record<string, number[]>} seenByCategory - state as read at the start of the run
- * @param {Record<string, number[]>} nextSeen - ids seen this run, per category
+ * @param {Record<string, number[]>} nextSeen - ids remembered after this run, per category
+ * @param {Array<{ category: string, itemId: number, name: string, imageUrl: string, since: string }>} awaitingArt
  */
-async function recordSeen(client, seenByCategory, nextSeen) {
-  await updateLastPosts(client, { spoilers: { ...seenByCategory, ...nextSeen } });
+async function recordState(client, seenByCategory, nextSeen, awaitingArt) {
+  await updateLastPosts(client, {
+    spoilers: { ...seenByCategory, ...nextSeen },
+    spoilersAwaitingArt: awaitingArt,
+  });
+}
+
+/**
+ * Rebuild the awaiting-artwork list from the spoilers channel, for a db written before the
+ * list existed. Reads the bot's own recent posts for "(image unavailable)" lines — both the
+ * current plain-message shape (`__Heading__` / `- Name _(image unavailable)_`) and the embed
+ * the post used to be (a `__**Heading**__` field of `• Name ...` lines) — and matches each
+ * name against its category's page 1 for the id and image URL. A name no longer on page 1 is
+ * left out: it's 30 items old, long past being a spoiler.
+ * @param {import('discord.js').Client} client
+ * @param {Map<string, Array<{ itemId: number, name: string, imageUrl: string }>>} byCategory
+ * @returns {Promise<Array<{ category: string, itemId: number, name: string, imageUrl: string, since: string }>>}
+ */
+async function seedAwaitingArtFromChannel(client, byCategory) {
+  const channel = await client.channels.fetch(SPOILERS_CHANNEL_ID).catch(() => null);
+  const messages = await channel?.messages.fetch({ limit: 100 }).catch(() => null);
+  if (!messages) {
+    console.warn("⚠️ Couldn't read the spoilers channel to find items posted without artwork");
+    return [];
+  }
+
+  const categoryByHeading = new Map(COLLECTIBLE_CATEGORIES.map((c) => [c.heading.toLowerCase(), c.key]));
+  const found = new Map();
+  for (const msg of messages.values()) {
+    if (msg.author?.id !== client.user.id) continue;
+    const blocks = [msg.content ?? "", ...msg.embeds.flatMap((e) => e.fields.map((f) => `${f.name}\n${f.value}`))];
+
+    for (const block of blocks) {
+      let category = null;
+      for (const line of block.split("\n").map((l) => l.trim())) {
+        const heading = line.match(/^__(?:\*\*)?(.+?)(?:\*\*)?__$/);
+        if (heading) {
+          category = categoryByHeading.get(heading[1].toLowerCase()) ?? null;
+          continue;
+        }
+        const name = line.match(/^[-•]\s+(.+?)\s+_\(image unavailable\)_$/)?.[1];
+        if (!category || !name) continue;
+
+        for (const item of byCategory.get(category) ?? []) {
+          if (item.name.toLowerCase() !== name.toLowerCase()) continue;
+          found.set(`${category}:${item.itemId}`, {
+            category,
+            itemId: item.itemId,
+            name: item.name,
+            imageUrl: item.imageUrl,
+            since: msg.createdAt.toISOString(),
+          });
+        }
+      }
+    }
+  }
+
+  console.log(`🗂️ Found ${found.size} earlier item(s) posted without artwork to keep checking`);
+  return [...found.values()];
 }
 
 /**
@@ -181,7 +336,7 @@ async function sendSpoilerPost({ client, sections, debug }) {
   try {
     for (const [i, { heading, items }] of sections.entries()) {
       const list = items
-        .map((item) => `- ${item.name}${item.image ? "" : " _(image unavailable)_"}`)
+        .map((item) => `- ${item.name}${item.image ? (item.artLanded ? ART_LANDED_NOTE : "") : " _(image unavailable)_"}`)
         .join("\n");
       const content = trimTo(`${i === 0 ? header : ""}__${heading}__\n${list}`, 2000);
 

@@ -7,6 +7,33 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `/post-daily date:` picks which day's events to post — the picker offers
+  yesterday through two days out, and a typed `10/20`, `Oct 20` or
+  `2026-10-20` works too. Left empty it posts the day the schedule is working
+  on (tomorrow's events from 7:30pm on), rather than always today's. The reply
+  now says whether it posted, found the day already posted, or found no wiki
+  page for it.
+- Collectibles posted with _(image unavailable)_ are re-checked every night and
+  reposted under their category with _(image now available)_ once the artwork
+  is up. Items from earlier posts (Swamp Monster, Stay Puft and the rest of the
+  Oct 1 post) are picked up from the spoilers channel on the first run.
+- `/gift-rotation force:` — picks again even though a rotation already went
+  out today.
+
+### Fixed
+- Running `/gift-rotation` early no longer leads to a second pick at the
+  scheduled 7:30pm slot. A rotation announces gifting for the next day, so the
+  scheduled run (and the command itself) now skips when one was already posted
+  today, not only during the startup catch-up.
+- The spoilers post re-announced an old token (Speedy) as new. Only the items
+  currently on page 1 were remembered, so one that slipped off and drifted back
+  on looked new; the bot now remembers the last 150 items per category, and
+  anything older than all of them is treated as old.
+- The daily post remembers the last two weeks of posted days instead of only
+  the latest, and checks the channel itself on manual runs too, so posting an
+  earlier day by hand can't re-post one that already went out.
+
+### Added
 - Startup catch-up: on boot the scheduler runs every job whose slot for today
   has already gone by, one after another through the same serial queue as the
   cron tasks. A bot started at 8:12pm no longer sits out the 7:30pm slot —

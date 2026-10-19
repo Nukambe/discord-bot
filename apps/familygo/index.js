@@ -35,6 +35,28 @@ const client = new Client({
 client.commands = new Collection();
 const cooldowns = new Collection();
 
+/** How many recent daily-post dates the db remembers (db.lastPosts.daily). */
+const DAILY_POSTED_CAP = 14;
+
+/**
+ * db.lastPosts.daily as a list of date slugs. A db written before /post-daily could pick
+ * its date holds a single slug there instead.
+ * @param {object} lastPosts
+ * @returns {string[]}
+ */
+const postedDailySlugs = (lastPosts) => {
+    const daily = lastPosts?.daily;
+    return Array.isArray(daily) ? daily : daily ? [daily] : [];
+};
+
+/**
+ * Post one day's "Today's Events" schedule.
+ * @param {import('discord.js').Client} client
+ * @param {string} dateSlug - e.g. "oct-19-2026"
+ * @param {{ debug?: boolean }} [opts]
+ * @returns {Promise<"posted"|"already-posted"|"unavailable"|"failed">} What happened —
+ *   "unavailable" means the wiki's index has no page for that date (not yet, or no longer).
+ */
 export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     // debug routes the post to TEST_CHANNEL_ID instead of the live channel, and
     // turns on the fetch-layer debug output (verbose logs + HTML dumps to disk).
@@ -42,15 +64,20 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
 
     console.log(`🌀 Starting postEventToDiscord for date: ${dateSlug}${debug ? " (debug → test channel)" : ""}`);
 
-    // Step 0: Skip if the db already records this date as posted — this is what keeps the
-    // cron and a manual /post-daily from double-posting each other's work, whichever ran
-    // first. Checked before any scraping so a skipped run never opens a browser window.
-    // Debug bypasses it (and never records) so a test post always goes out.
+    // Step 0: Skip a date the db records as posted, or that the channel already shows —
+    // this is what keeps the cron and a manual /post-daily (for any date) from double-posting
+    // each other's work, whichever ran first. Checked before any scraping so a skipped run
+    // never opens a browser window. Debug bypasses it (and never records) so a test post
+    // always goes out.
     if (!debug) {
         const lastPosts = await getLastPosts(client);
-        if (lastPosts.daily === dateSlug) {
+        if (postedDailySlugs(lastPosts).includes(dateSlug)) {
             console.log(`ℹ️ Daily post for ${dateSlug} already recorded in db — skipping`);
-            return;
+            return "already-posted";
+        }
+        if (await isAlreadyPosted(client, dateSlug)) {
+            console.log(`ℹ️ Daily post for ${dateSlug} already in the channel — skipping`);
+            return "already-posted";
         }
     }
 
@@ -58,7 +85,7 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     const eventsHtml = await getMogoWikiEvents({ debug });
     if (!eventsHtml) {
         console.error("❌ Unable to retrieve HTML from Mogo Wiki");
-        return;
+        return "failed";
     }
     console.log("✅ Retrieved main events HTML");
 
@@ -66,7 +93,7 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     const url = getEventUrlFromHtml(eventsHtml, dateSlug, { debug });
     if (!url) {
         console.warn(`⚠️ No event URL found for date slug: ${dateSlug}`);
-        return false;
+        return "unavailable";
     }
     console.log(`🔗 Found event URL: ${url}`);
 
@@ -74,7 +101,7 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     const eventHtml = await getMogoEventPage(url, { debug });
     if (!eventHtml) {
         console.error(`❌ Unable to fetch event page for URL: ${url}`);
-        return;
+        return "failed";
     }
     console.log("✅ Retrieved event page HTML");
 
@@ -82,7 +109,7 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
     const data = parseMonopolyEventPage(eventHtml);
     if (!data) {
         console.error("❌ Failed to parse Monopoly event page data");
-        return;
+        return "failed";
     }
     console.log("🧩 Parsed event data successfully");
 
@@ -101,12 +128,39 @@ export const postEventToDiscord = async (client, dateSlug, opts = {}) => {
             debug,
         });
         console.log("✅ Successfully posted event to Discord");
-        if (!debug) await updateLastPosts(client, { daily: dateSlug });
+        if (!debug) {
+            // Re-read rather than reuse step 0's copy: the post took a browser session, and
+            // another run may have recorded a date in the meantime.
+            const recent = postedDailySlugs(await getLastPosts(client)).filter((slug) => slug !== dateSlug);
+            await updateLastPosts(client, { daily: [dateSlug, ...recent].slice(0, DAILY_POSTED_CAP) });
+        }
     } catch (err) {
         console.error("💥 Failed to post event to Discord:", err);
+        return "failed";
     }
 
     console.log("🏁 Finished postEventToDiscord\n");
+    return "posted";
+};
+
+/**
+ * The date the scheduled daily post is working on right now: tomorrow's events from the
+ * window's opening evening onwards, today's from the retries that spill past midnight.
+ * Shared by the cron and /post-daily's default, so the command with no date posts what the
+ * schedule would.
+ * @param {object} db
+ * @param {Date} [now]
+ * @returns {Date} A local-midnight Date for that ET calendar day.
+ */
+export const getScheduledDailyDate = (db, now = new Date()) => {
+    const [startHour, startMinute] = parseHHmm(db?.dailyPost?.windowStartTime, 19, 30);
+    const [estYear, estMonth, estDay] = toEstDateString(now).split('-').map(Number);
+    const { hour: estHour, minute: estMinute } = toEstTimeParts(now);
+
+    const afterWindowStart = estHour > startHour || (estHour === startHour && estMinute >= startMinute);
+    const targetDate = new Date(estYear, estMonth - 1, estDay);
+    if (afterWindowStart) targetDate.setDate(targetDate.getDate() + 1);
+    return targetDate;
 };
 
 /**
@@ -126,6 +180,19 @@ const listenForCommands = async (client) => {
     console.log("🧭 Command listener initialized");
 
     client.on(Events.InteractionCreate, async (interaction) => {
+        // Autocomplete arrives as its own interaction type and has a hard 3s
+        // deadline, so it bypasses the cooldown/error-reply path below.
+        if (interaction.isAutocomplete()) {
+            const cmd = client.commands.get(interaction.commandName);
+            if (typeof cmd?.autocomplete !== "function") return;
+            try {
+                await cmd.autocomplete(interaction);
+            } catch (err) {
+                console.error(`💥 Autocomplete failed for /${interaction.commandName}:`, err);
+            }
+            return;
+        }
+
         if (interaction.isModalSubmit()) {
             if (!interaction.customId.startsWith("config-modal:")) return;
             try {
@@ -278,12 +345,14 @@ const JOBS = [
         run: async ({ client, db, catchUp }) => {
             console.log("🎁 Running gift rotation...");
 
-            // The startup catch-up re-fires today's passed slots, which every other job
-            // shrugs off because it dedupes before doing any work. A rotation pick can't —
-            // a second one burns another giftee out of the cycle — so this is the one job
-            // that has to ask whether today's slot already happened.
-            if (catchUp && (await rotatedToday(client))) {
-                console.log("⏭️ Gift rotation already posted today. Skipping catch-up.");
+            // A rotation posted today already covers this slot: it announces gifting for
+            // tomorrow, which is the same day this run would announce. That happens when
+            // /gift-rotation is run early by hand, or when the startup catch-up re-fires a
+            // slot that went out before a restart. Every other job shrugs those off because
+            // it dedupes before doing any work; a rotation pick can't — a second one burns
+            // another giftee out of the cycle.
+            if (await rotatedToday(client)) {
+                console.log(`⏭️ Gift rotation already posted today. Skipping${catchUp ? " catch-up" : ""}.`);
                 return;
             }
 
@@ -355,22 +424,11 @@ const JOBS = [
             });
         },
         run: async ({ client, db }) => {
-            const [startHour, startMinute] = parseHHmm(db.dailyPost?.windowStartTime, 19, 30);
+            // Which side of midnight the slot sits on decides the target date.
+            const dateSlug = formatDateSlug(getScheduledDailyDate(db));
 
-            // Get current time components in Eastern
-            const now = new Date();
-            const [estYear, estMonth, estDay] = toEstDateString(now).split('-').map(Number);
-            const { hour: estHour, minute: estMinute } = toEstTimeParts(now);
-
-            // Which side of midnight the slot sits on decides the target date:
-            // tomorrow's events from the window's opening evening, today's from
-            // the retries that spill past midnight.
-            const afterWindowStart = estHour > startHour || (estHour === startHour && estMinute >= startMinute);
-            const targetDate = new Date(estYear, estMonth - 1, estDay);
-            if (afterWindowStart) targetDate.setDate(targetDate.getDate() + 1);
-            const dateSlug = formatDateSlug(targetDate);
-
-            // Skip if already posted (Discord is the persistence layer)
+            // Skip quietly if already posted (Discord is the persistence layer) —
+            // postEventToDiscord checks again, but would log every remaining retry slot.
             if (await isAlreadyPosted(client, dateSlug)) return;
 
             console.log(`📅 Attempting to post event for ${dateSlug}...`);

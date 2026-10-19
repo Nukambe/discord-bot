@@ -70,15 +70,16 @@ export async function shouldSkipRotation(client) {
 /**
  * Whether a rotation has already been posted today (America/New_York).
  *
- * Only the startup catch-up needs this. Every other scheduled job answers "is this already
- * done?" from Discord or the db as a matter of course, so re-firing a slot the process was
- * down for costs nothing; a rotation pick is the exception — running it twice consumes two
- * giftees out of one cycle. The evidence is the rotation log message's own timestamp rather
- * than the STATE line's `ts`, which /gift-skip stamps too.
+ * Every scheduled run and /gift-rotation ask this first. A rotation announces gifting for
+ * the next day, so two on one day are two picks for the same gifting day — whether the
+ * second came from the schedule after someone ran the command early, from the startup
+ * catch-up re-firing a slot that already went out, or from the command run twice. Running it
+ * twice consumes two giftees out of one cycle. The evidence is the rotation log message's own
+ * timestamp rather than the STATE line's `ts`, which /gift-skip stamps too.
  *
  * Fails *closed*: a channel that can't be read reports the rotation as already run, so an
- * unreadable channel can never turn into a double pick. The regularly scheduled run is
- * unaffected — it has always just attempted the rotation.
+ * unreadable channel can never turn into a double pick (and a rotation couldn't post its
+ * log there anyway).
  *
  * @param {import('discord.js').Client} client
  * @returns {Promise<boolean>}
