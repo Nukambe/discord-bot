@@ -71,4 +71,10 @@ context.on("page", (p) => { if (p !== page) p.close().catch(() => {}); });
 
 await page.goto(START_URL, { waitUntil: "domcontentloaded", timeout: 60000 });
 console.log("streamviewer open — browse freely; game pages get stripped. Close the window to exit.");
-await new Promise((resolve) => browser.on("disconnected", resolve));
+// Closing the window doesn't always take Chrome's process down with it, so
+// treat the page closing as the exit signal too, not just the disconnect.
+await new Promise((resolve) => {
+  browser.on("disconnected", resolve);
+  page.on("close", resolve);
+});
+await browser.close().catch(() => {});
