@@ -28,8 +28,13 @@ export function urlKey(url) {
 }
 
 /**
- * Concatenate the recent message content and embed URLs of the given channels into one
- * lowercase blob, cheap to test with `haystack.includes(urlKey(link))`.
+ * Concatenate the content and embed URLs of the bot's own recent messages in the given
+ * channels into one lowercase blob, cheap to test with `haystack.includes(urlKey(link))`.
+ *
+ * Only the bot's messages count: the question is whether the bot has posted something, and
+ * members paste wiki links into these channels too. A link nukambabe shared in
+ * special-events once made both the nightly news sweep and `/future-events date:` treat the
+ * article as posted, so its formatted post never went out.
  *
  * A channel that can't be read contributes nothing rather than throwing — the caller then
  * risks a duplicate post, which is the better failure than silently skipping a real one.
@@ -37,7 +42,7 @@ export function urlKey(url) {
  * @param {import('discord.js').Client} client - A logged-in Discord client.
  * @param {Array<string|null|undefined>} channelIds - Channels to scan; duplicates/blanks ignored.
  * @param {{ limit?: number }} [opts]
- * @returns {Promise<string>} Lowercased haystack of everything recently posted.
+ * @returns {Promise<string>} Lowercased haystack of everything the bot recently posted.
  */
 export async function fetchPostedHaystack(client, channelIds, opts = {}) {
   const { limit = DEFAULT_HISTORY_LIMIT } = opts;
@@ -54,6 +59,7 @@ export async function fetchPostedHaystack(client, channelIds, opts = {}) {
       if (!messages) continue;
 
       for (const msg of messages.values()) {
+        if (msg.author?.id !== client.user.id) continue;
         if (msg.content) parts.push(msg.content);
         for (const embed of msg.embeds || []) {
           if (embed?.url) parts.push(embed.url);

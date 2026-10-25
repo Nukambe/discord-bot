@@ -44,6 +44,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   and the cycle carries on as it was. `/gift-pool view` shows a pinned pick.
 
 ### Fixed
+- A wiki article whose link a member had pasted into a news channel was never
+  posted: the "already posted?" check counted anyone's message. It now only
+  counts the bot's own posts — for news articles, free dice links and the
+  weekly predictions alike. The Oct 23 Ghostbusters drop guide was missed this
+  way; `/future-events date: 10/23` posts it.
 - Running `/gift-rotation` early no longer leads to a second pick at the
   scheduled 7:30pm slot. A rotation announces gifting for the next day, so the
   scheduled run (and the command itself) now skips when one was already posted
