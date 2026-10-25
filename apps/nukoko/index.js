@@ -3,6 +3,7 @@ import { loadCommands } from "../../util/loadCommands.js";
 import { deployCommands } from "./deploy-commands.js";
 import { startStreamNotifier } from "./streamNotifier.js";
 import { startWeekendCodeJob } from "./jobs/weekendCode.js";
+import { startNbaReminders } from "./jobs/nbaReminders.js";
 import path from "node:path";
 import "dotenv/config";
 
@@ -103,6 +104,7 @@ client.once(Events.ClientReady, async () => {
   await listenForCommands(client);
   startStreamNotifier(client).catch(console.error);
   startWeekendCodeJob(client);
+  startNbaReminders(client);
 });
 
 const shutdown = async (sig) => {

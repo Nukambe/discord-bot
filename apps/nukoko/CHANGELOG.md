@@ -7,6 +7,11 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- NBA reminders (`jobs/nbaReminders.js`) — chappelly's NBA streams cron
+  without the stream links: the day's slate (start time in each viewer's own timezone, matchup, national TV) at
+  10:00 ET and a post as each game starts, in the stream-notify channel. The
+  schedule comes from ESPN's public scoreboard API; a restart after 10:00
+  checks the channel for today's slate instead of reposting it.
 - **LAST GAME Aomine** added to the PF roster (`roster.js`) — picked up
   automatically by `/random-character` and `/builds`.
 - `/balls show|add|remove` — user-submitted ball images, stored the same way as
