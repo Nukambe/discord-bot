@@ -1,10 +1,17 @@
 import { AttachmentBuilder } from "discord.js";
-import { getMogoWikiNews, getNewsIndexPosts, selectPostsSinceMarker, searchedEntry } from "./getFutureEvents.js";
+import {
+  getMogoWikiNews,
+  getNewsIndexPosts,
+  selectPostsSinceMarker,
+  selectPostsOnDate,
+  searchedEntry,
+} from "./getFutureEvents.js";
 import { fetchManyWithPlaywright } from "../../util/fetchWithPlaywright.js";
 import { outputToFile } from "../../util/outputToFile.js";
 import { parseFutureEventPost } from "./parseFutureEventPost.js";
 import { fetchPostedHaystack, haystackHasUrl } from "./alreadyPosted.js";
 import { getLastPosts, updateLastPosts } from "./db.js";
+import { gridBatches } from "./imageGrid.js";
 
 // Live channels for /future-events posts. Hardcoded (not env-based) per request.
 const FUTURE_EVENTS_CHANNEL_ID = "1393942240300372008";
@@ -12,10 +19,8 @@ const SPECIAL_EVENTS_CHANNEL_ID = "1393942240300372008"; // 🏆 special-events
 const GOLDEN_BLITZ_CHANNEL_ID = "1398027599472754822";
 const ALBUM_PREVIEWS_CHANNEL_ID = "1449448347965460553";
 
-/** Discord's per-message caps; anything past them spills into follow-up messages. */
+/** Discord's per-message embed cap; anything past it spills into follow-up messages. */
 const MAX_EMBEDS_PER_MESSAGE = 10;
-// Discord allows 10 attachments, but its 10-image grid crops the top of the last tile.
-const MAX_ATTACHMENTS_PER_MESSAGE = 9;
 
 // Maps a post's category tag (from parseFutureEventPost's `tags`) to a target channel
 // and an optional emoji wrapped around the post's title in the message content (the wiki
@@ -77,47 +82,70 @@ const ALL_TARGET_CHANNEL_IDS = [
  * visible Chrome window on the packaged desktop build.
  *
  * @param {import('discord.js').Client} client - A logged-in Discord client.
- * @param {{ debug?: boolean }} [opts]
+ * @param {{ debug?: boolean, date?: string|null }} [opts]
  *  - debug: post to process.env.TEST_CHANNEL_ID instead of the hardcoded live channels,
  *    turn on fetch-layer debug output (verbose logs + HTML dumps to disk), and bypass the
  *    searched list and the channel scan (and never record anything) so a manual run always
  *    produces messages to eyeball.
+ *  - date: an ET calendar date ("YYYY-MM-DD") to post that day's articles instead of
+ *    sweeping from the stored cutoff (see selectPostsOnDate). The channel scan still
+ *    applies; the sweep state is neither read nor written.
+ * @returns {Promise<{ posted: number, alreadyPosted: number, failed: number, coversDate: boolean }|null>}
+ *   null when the news index couldn't be fetched or parsed.
  */
 export const postFutureEventsToDiscord = async (client, opts = {}) => {
-  const { debug = false } = opts;
+  const { debug = false, date = null } = opts;
 
-  console.log(`🌀 Starting postFutureEventsToDiscord${debug ? " (debug → test channel)" : ""}`);
+  console.log(
+    `🌀 Starting postFutureEventsToDiscord${date ? ` for ${date}` : ""}${debug ? " (debug → test channel)" : ""}`
+  );
 
   const newsHtml = await getMogoWikiNews({ debug });
   if (!newsHtml) {
     console.error("❌ Unable to retrieve HTML from Mogo Wiki News page");
-    return;
+    return null;
   }
 
   const cards = getNewsIndexPosts(newsHtml, { debug });
   if (!cards.length) {
     console.error("❌ No posts found on the news index (page layout changed?)");
-    return;
+    return null;
   }
 
-  const state = debug ? {} : readSweepState(await getLastPosts(client));
-  const { candidates, skipped, latestMarker, lowerBound } = selectPostsSinceMarker(cards, state, {
-    ignoreSearched: debug,
-  });
-  if (!lowerBound) {
-    console.warn('⚠️ No "Today\'s Events" post on the news index and no stored cutoff — nothing to measure from');
-    return;
+  let state = null;
+  let candidates;
+  let skipped = [];
+  let latestMarker = null;
+  let lowerBound = null;
+  let coversDate = true;
+  if (date) {
+    ({ candidates, coversDate } = selectPostsOnDate(cards, date));
+    console.log(
+      `📍 Looking at posts published ${date} (ET) — ${candidates.length} to check` +
+        (coversDate ? "" : " (the news index doesn't reach back past that day, so some may be missing)")
+    );
+  } else {
+    state = debug ? {} : readSweepState(await getLastPosts(client));
+    ({ candidates, skipped, latestMarker, lowerBound } = selectPostsSinceMarker(cards, state, {
+      ignoreSearched: debug,
+    }));
+    if (!lowerBound) {
+      console.warn('⚠️ No "Today\'s Events" post on the news index and no stored cutoff — nothing to measure from');
+      return { posted: 0, alreadyPosted: 0, failed: 0, coversDate: false };
+    }
+    console.log(
+      `📍 Looking at posts after ${lowerBound.toISOString()}` +
+        (latestMarker ? ` (newest marker: "${latestMarker.title}" at ${latestMarker.publishDate.toISOString()})` : "") +
+        ` — ${candidates.length} to check, ${skipped.length} already searched`
+    );
   }
-  console.log(
-    `📍 Looking at posts after ${lowerBound.toISOString()}` +
-      (latestMarker ? ` (newest marker: "${latestMarker.title}" at ${latestMarker.publishDate.toISOString()})` : "") +
-      ` — ${candidates.length} to check, ${skipped.length} already searched`
-  );
 
   // `handled` is what the next run may skip; a post whose page couldn't be fetched or posted
   // is left out so it is looked at again.
   const handled = [...skipped];
   const failed = [];
+  let posted = 0;
+  let alreadyPosted = 0;
 
   // Checked before fetching each post page, so an already-posted article costs one string
   // lookup instead of a page load. Keyed on the URL alone: the posted embed's timestamp
@@ -130,6 +158,7 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
       if (haystackHasUrl(posted, card.url)) {
         console.log(`ℹ️ Already in a target channel: ${card.title}`);
         handled.push(card);
+        alreadyPosted++;
       } else {
         toFetch.push(card);
       }
@@ -160,6 +189,7 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
         await postFutureEvent(client, data, { debug });
         console.log(`✅ Posted: ${data.title}`);
         handled.push(card);
+        posted++;
       } catch (err) {
         console.error(`💥 Failed to process/post ${card.url}:`, err);
         failed.push(card);
@@ -169,9 +199,12 @@ export const postFutureEventsToDiscord = async (client, opts = {}) => {
     console.log("ℹ️ Nothing new to post");
   }
 
-  if (!debug) await recordSweep(client, state, { handled, failed, latestMarker, lowerBound });
+  // A dated run is off to the side of the sweep: it neither advances the cutoff nor marks
+  // posts searched, and the channel scan is what stops the next sweep re-posting its work.
+  if (!debug && !date) await recordSweep(client, state, { handled, failed, latestMarker, lowerBound });
 
   console.log("🏁 Finished postFutureEventsToDiscord\n");
+  return { posted, alreadyPosted, failed: failed.length, coversDate };
 };
 
 /**
@@ -291,7 +324,7 @@ async function postGallery(channel, gallery) {
     else fallbackEmbeds.push({ image: { url } });
   }
 
-  const fileBatches = chunk(files, MAX_ATTACHMENTS_PER_MESSAGE);
+  const fileBatches = gridBatches(files);
   const embedBatches = chunk(fallbackEmbeds, MAX_EMBEDS_PER_MESSAGE);
   const messages = Math.max(fileBatches.length, embedBatches.length);
   for (let i = 0; i < messages; i++) {

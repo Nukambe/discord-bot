@@ -11,6 +11,7 @@ import { postNewFreeDiceLinks } from "./postFreeDiceLinks.js";
 import { postWeeklyPredictions, getUpcomingMondayEstDate } from "./postWeeklyPredictions.js";
 import { postCollectibleSpoilers } from "./postCollectibleSpoilers.js";
 import { postDstReminder } from "./postDstReminder.js";
+import { RACE_CONFIRM_PREFIX, RACE_REMINDER_STEPS, handleRaceConfirm, sendDueRaceReminder } from "./raceReminder.js";
 import { loadCommands, loadCommandsFromModules } from "../../util/loadCommands.js";
 import { staticCommands } from "./commands/index.js";
 import { fileURLToPath } from "node:url";
@@ -190,6 +191,18 @@ const listenForCommands = async (client) => {
                 await cmd.autocomplete(interaction);
             } catch (err) {
                 console.error(`💥 Autocomplete failed for /${interaction.commandName}:`, err);
+            }
+            return;
+        }
+
+        if (interaction.isButton()) {
+            if (!interaction.customId.startsWith(RACE_CONFIRM_PREFIX)) return;
+            try {
+                await handleRaceConfirm(interaction);
+            } catch (err) {
+                console.error("💥 Error handling race reminder button:", err);
+                const reply = { content: "⚠️ Something went wrong confirming that.", ephemeral: true };
+                await (interaction.deferred || interaction.replied ? interaction.followUp(reply) : interaction.reply(reply)).catch(() => { });
             }
             return;
         }
@@ -413,6 +426,21 @@ const JOBS = [
         slots: () => atTime(0, 0),
         run: async ({ client }) => {
             await postDstReminder(client);
+        },
+    },
+
+    /**
+     * Race team reminders: every step time (5pm, 9pm, 9am, 12pm ET) every day,
+     * though a run only posts while a /race-reminder start race has a step due
+     * that hasn't gone out (db.lastPosts.raceReminder.step — see raceReminder.js),
+     * so the startup catch-up and the quiet days are both no-ops. Needs no
+     * browser, so it runs ahead of the daily post's retries at the same minutes.
+     */
+    {
+        name: "race-reminder",
+        slots: () => RACE_REMINDER_STEPS.flatMap(({ hour, minute }) => atTime(hour, minute)),
+        run: async ({ client }) => {
+            await sendDueRaceReminder(client);
         },
     },
 

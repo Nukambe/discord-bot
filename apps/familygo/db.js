@@ -74,8 +74,13 @@ export const defaultDb = () => ({
                       // has never been checked, which is what triggers its one-time silent
                       // seed; the ids are how "new" is decided at all, since the wiki dates
                       // none of its collectibles.
-    // spoilersAwaitingArt — [{ category, itemId, name, imageUrl, since }] items posted with
-    // "(image unavailable)", re-checked every run and reposted once their artwork lands. Has
+    raceReminder: null, // The race /race-reminder start began, or null: { startedAt (ms),
+                        // date (ET "YYYY-MM-DD" it started), step (index of the last reminder
+                        // sent, -1 before the first), people: [{ id, channel, name }] } —
+                        // who has pressed Yes is read from their channels (raceReminder.js)
+    // spoilersAwaitingArt — [{ category, itemId, name, imageUrl, since }] items held back
+    // because their artwork isn't up yet (the earliest were posted with "(image
+    // unavailable)"), re-checked every run and posted once their artwork lands. Has
     // no default on purpose: absent means "never built", which makes the spoilers job read
     // the earlier posts back from its channel once, and a default here would be filled in
     // by every other job's updateLastPosts write before that could happen.

@@ -1,15 +1,10 @@
 import { AttachmentBuilder } from "discord.js";
 import { COLLECTIBLE_CATEGORIES, COLLECTIBLES_SOURCE_URL, getCollectibles } from "./getCollectibles.js";
 import { getDb, updateLastPosts } from "./db.js";
+import { gridBatches } from "./imageGrid.js";
 
 /** Live channel for collectible spoiler posts. Hardcoded (not env-based), like free dice. */
 const SPOILERS_CHANNEL_ID = "1449448347965460553";
-
-/**
- * Images per message; extra images spill into follow-up messages. Discord allows 10, but its
- * 10-image grid crops the top of the last tile, so a grid stops at 9.
- */
-const MAX_ATTACHMENTS_PER_MESSAGE = 9;
 
 /**
  * How many of each category's newest items the *first* ever run posts, before any seen-item
@@ -33,14 +28,11 @@ const DEBUG_POST_COUNT = 2;
 const SEEN_CAP = 150;
 
 /**
- * How long an item posted with "(image unavailable)" keeps being checked for its artwork.
- * Past this it's dropped quietly — Scopely uploads art within days, so an item still missing
- * it after two months has most likely been pulled.
+ * How long an item held back for its artwork keeps being checked. Past this it's dropped
+ * quietly, never having been posted — Scopely uploads art within days, so an item still
+ * missing it after two months has most likely been pulled.
  */
 const AWAITING_ART_MAX_DAYS = 60;
-
-/** Note an item's line carries when it's reposted because its artwork has landed. */
-const ART_LANDED_NOTE = " _(image now available)_";
 
 /**
  * Post any collectibles that have appeared on the wiki's dice skins / shields / tokens
@@ -67,11 +59,13 @@ const ART_LANDED_NOTE = " _(image now available)_";
  * and attachments keep the source PNGs' alpha channel, so the icons sit transparent on
  * whatever background the viewer's theme uses.
  *
- * An item the wiki has listed but Scopely hasn't uploaded artwork for yet gets its name with
- * an "(image unavailable)" note — the record always carries an image URL, but the CDN 404s
- * until the asset lands. Such an item is also remembered in `db.lastPosts.spoilersAwaitingArt`,
- * and every run re-checks those URLs (plain HTTPS, no browser); once one answers, the item is
- * posted again in its category with its artwork and an "(image now available)" note.
+ * An item the wiki has listed but Scopely hasn't uploaded artwork for yet is held back — the
+ * record always carries an image URL, but the CDN 404s until the asset lands. It's recorded
+ * as seen like any other item, and also in `db.lastPosts.spoilersAwaitingArt`; every run
+ * re-checks those URLs (plain HTTPS, no browser), and once one answers the item is posted in
+ * its category like a new one. Per request, a post only ever lists items it has the art
+ * for, so no line carries an "(image unavailable)" note any more — the earliest posts did,
+ * which is what seedAwaitingArtFromChannel reads back.
  *
  * Called from the nightly 7:30pm cron (the 'collectible-spoilers' job in index.js) and the
  * manual /spoilers command.
@@ -141,14 +135,20 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
     if (newItems.length) newByCategory.set(key, newItems);
   }
 
-  // One request per new item decides available vs "(image unavailable)", and downloads the
-  // artwork for attaching. Plain HTTPS against the asset CDN — no Chrome needed.
-  for (const items of newByCategory.values()) {
+  // One request per new item decides whether its artwork is up, and downloads it for
+  // attaching. Plain HTTPS against the asset CDN — no Chrome needed. An item without it is
+  // held back until it lands (below); it's already in nextSeen, so it isn't "new" again.
+  const heldBack = [];
+  for (const [category, items] of newByCategory) {
     for (const item of items) item.image = await downloadItemImage(item);
+    heldBack.push(...items.filter((item) => !item.image).map((item) => ({ category, ...item })));
+    const withArt = items.filter((item) => item.image);
+    if (withArt.length) newByCategory.set(category, withArt);
+    else newByCategory.delete(category);
   }
 
-  // Items posted earlier without artwork get the same check; the ones that answer now are
-  // reposted under their category, after whatever is new there. Debug leaves the list alone.
+  // Items held back earlier get the same check; the ones that answer now are posted under
+  // their category, after whatever is new there. Debug leaves the list alone.
   const landedByCategory = new Map();
   const stillAwaiting = [];
   if (!debug) {
@@ -164,22 +164,20 @@ export const postCollectibleSpoilers = async (client, opts = {}) => {
         itemId: entry.itemId,
         name: current?.name ?? entry.name,
         imageUrl: current?.imageUrl || entry.imageUrl,
-        artLanded: true,
       };
       item.image = await downloadItemImage(item);
       if (!item.image) {
         stillAwaiting.push(entry);
         continue;
       }
-      console.log(`🖼️ Artwork landed for "${item.name}" — reposting it`);
+      console.log(`🖼️ Artwork landed for "${item.name}" — posting it`);
       landedByCategory.set(entry.category, [...(landedByCategory.get(entry.category) ?? []), item]);
     }
 
     const since = new Date().toISOString();
-    for (const [category, items] of newByCategory) {
-      for (const { itemId, name, imageUrl, image } of items) {
-        if (!image && imageUrl) stillAwaiting.push({ category, itemId, name, imageUrl, since });
-      }
+    for (const { category, itemId, name, imageUrl } of heldBack) {
+      console.log(`⏳ Holding back "${name}" until its artwork is up`);
+      stillAwaiting.push({ category, itemId, name, imageUrl: imageUrl || "", since });
     }
   }
 
@@ -240,6 +238,7 @@ function mergeSeen(items, seen = []) {
  * @param {Record<string, number[]>} seenByCategory - state as read at the start of the run
  * @param {Record<string, number[]>} nextSeen - ids remembered after this run, per category
  * @param {Array<{ category: string, itemId: number, name: string, imageUrl: string, since: string }>} awaitingArt
+ *   items held back because their artwork isn't up yet
  */
 async function recordState(client, seenByCategory, nextSeen, awaitingArt) {
   await updateLastPosts(client, {
@@ -250,8 +249,9 @@ async function recordState(client, seenByCategory, nextSeen, awaitingArt) {
 
 /**
  * Rebuild the awaiting-artwork list from the spoilers channel, for a db written before the
- * list existed. Reads the bot's own recent posts for "(image unavailable)" lines — both the
- * current plain-message shape (`__Heading__` / `- Name _(image unavailable)_`) and the embed
+ * list existed — back when an item without artwork was posted anyway, with a note. Reads the
+ * bot's own recent posts for "(image unavailable)" lines — both the plain-message shape
+ * (`__Heading__` / `- Name _(image unavailable)_`) and the embed
  * the post used to be (a `__**Heading**__` field of `• Name ...` lines) — and matches each
  * name against its category's page 1 for the id and image URL. A name no longer on page 1 is
  * left out: it's 30 items old, long past being a spoiler.
@@ -309,12 +309,12 @@ async function seedAwaitingArtFromChannel(client, byCategory) {
  *
  * Plain messages rather than an embed because an embed always renders below a message's
  * attachments and holds one list for the whole post, so the images couldn't be interleaved
- * with their categories. A category with more than MAX_ATTACHMENTS_PER_MESSAGE images
- * continues in attachment-only messages before the next category starts.
+ * with their categories. A category with more images than one grid holds continues in
+ * attachment-only messages before the next category starts (see gridBatches).
  *
  * @param {object} args
  * @param {import('discord.js').Client} args.client
- * @param {Array<{ heading: string, items: Array<{ itemId: number, name: string, image: {name: string, data: Buffer}|null }> }>} args.sections
+ * @param {Array<{ heading: string, items: Array<{ itemId: number, name: string, image: {name: string, data: Buffer} }> }>} args.sections
  * @param {boolean} args.debug
  * @returns {Promise<boolean>} Whether the post went out.
  */
@@ -335,17 +335,13 @@ async function sendSpoilerPost({ client, sections, debug }) {
   let fileCount = 0;
   try {
     for (const [i, { heading, items }] of sections.entries()) {
-      const list = items
-        .map((item) => `- ${item.name}${item.image ? (item.artLanded ? ART_LANDED_NOTE : "") : " _(image unavailable)_"}`)
-        .join("\n");
+      const list = items.map((item) => `- ${item.name}`).join("\n");
       const content = trimTo(`${i === 0 ? header : ""}__${heading}__\n${list}`, 2000);
 
-      const files = items
-        .filter((item) => item.image)
-        .map((item) => new AttachmentBuilder(item.image.data, { name: item.image.name }));
+      const files = items.map((item) => new AttachmentBuilder(item.image.data, { name: item.image.name }));
       fileCount += files.length;
 
-      const batches = chunk(files, MAX_ATTACHMENTS_PER_MESSAGE);
+      const batches = gridBatches(files);
       await channel.send({ content, files: batches[0] ?? [] });
       for (const batch of batches.slice(1)) await channel.send({ files: batch });
     }
@@ -362,7 +358,7 @@ async function sendSpoilerPost({ client, sections, debug }) {
 }
 
 /**
- * Download an item's artwork, or report it unavailable.
+ * Download an item's artwork, or report that it isn't up yet.
  *
  * A missing asset is a 404 from the CDN, not a missing URL: the wiki lists an item as soon
  * as it knows the name, with the image path it *will* have. The 404 body is an HTML error
@@ -398,17 +394,6 @@ function attachmentName({ itemId, name, imageUrl }) {
   const ext = (imageUrl.match(/\.(png|jpe?g|webp|gif)(?:\?|$)/i)?.[1] || "png").toLowerCase();
   const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "item";
   return `${itemId}-${slug}.${ext}`;
-}
-
-/**
- * @param {Array} arr
- * @param {number} size
- * @returns {Array[]} `arr` split into runs of at most `size` (empty input → []).
- */
-function chunk(arr, size) {
-  const out = [];
-  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
-  return out;
 }
 
 /**

@@ -15,6 +15,7 @@ import next from "./next.js";
 import openVault from "./openVault.js";
 import ping from "./ping.js";
 import postDaily from "./postDaily.js";
+import raceReminder from "./race-reminder.js";
 import skip from "./skip.js";
 import spoilers from "./spoilers.js";
 import stickerRequest from "./sticker-request.js";
@@ -33,6 +34,7 @@ export const staticCommands = [
   openVault,
   ping,
   postDaily,
+  raceReminder,
   skip,
   spoilers,
   stickerRequest,

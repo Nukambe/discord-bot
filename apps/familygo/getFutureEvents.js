@@ -1,6 +1,7 @@
 import * as cheerio from "cheerio";
 import { fetchWithPlaywright } from "../../util/fetchWithPlaywright.js";
 import { outputToFile } from "../../util/outputToFile.js";
+import { toEstDateString } from "../../util/dateUtils.js";
 import { urlKey } from "./alreadyPosted.js";
 
 const MOGO_WIKI_NEWS_URL = "https://monopolygo.wiki/news";
@@ -180,4 +181,23 @@ export function selectPostsSinceMarker(cards, state = {}, opts = {}) {
   }
 
   return { candidates, skipped, latestMarker, lowerBound };
+}
+
+/**
+ * Pick the article cards the index shows as published on one ET calendar day — the
+ * `/future-events date:` run, which ignores the sweep's markers and stored state entirely.
+ *
+ * The index only lists recent posts, so `coversDate` says whether it reaches back past
+ * that day at all: false when its oldest card is on or after the date, in which case an
+ * empty (or short) candidate list may just mean the day's posts have scrolled off.
+ *
+ * @param {NewsCard[]} cards - From getNewsIndexPosts (newest first).
+ * @param {string} date - ET calendar date, "YYYY-MM-DD".
+ * @returns {{ candidates: NewsCard[], coversDate: boolean }}
+ */
+export function selectPostsOnDate(cards, date) {
+  const candidates = cards.filter((c) => c.kind === "article" && toEstDateString(c.publishDate) === date);
+  const oldest = cards[cards.length - 1];
+  const coversDate = !!oldest && toEstDateString(oldest.publishDate) < date;
+  return { candidates, coversDate };
 }

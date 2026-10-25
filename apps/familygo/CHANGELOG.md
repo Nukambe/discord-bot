@@ -7,6 +7,19 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- `/race-reminder start` reminds everyone on the gift rotation rosters, in
+  their own channel, to join their racers team: at 5pm and 9pm that day, then
+  9am and 12pm the next day, each one more urgent than the last. Every
+  reminder tags the channel's owner and has a **Yes** button, and it only goes
+  to people who haven't pressed Yes yet. Pressing it removes the buttons and
+  posts a thank-you. Started after 5pm, the reminder that's due goes out
+  straight away. `/race-reminder stop` ends it early. Survives restarts: which
+  reminder went out last is kept in the db, and who has confirmed is read
+  from their channels.
+- `/future-events date:` posts only the wiki news articles published on that
+  day (ET), with the same date picker as `/post-daily`. It still skips
+  anything already posted, and doesn't change where the nightly sweep picks
+  up.
 - Daylight saving reminder: at midnight ET on the days the clocks change
   (next: Sunday Nov 1, 2026), the bot posts a reminder in #general with the
   shifted quick wins and tournament reset times. A bot started later that day
@@ -42,6 +55,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - The daily post remembers the last two weeks of posted days instead of only
   the latest, and checks the channel itself on manual runs too, so posting an
   earlier day by hand can't re-post one that already went out.
+
+### Changed
+- Collectible spoilers without artwork are no longer posted with
+  _(image unavailable)_. They're held back and posted under their category,
+  like any new item, on the first night their artwork is up, so a post never
+  carries an italic note. An item whose art never shows up within 60 days is
+  dropped.
+- Image grids (collectible spoilers and news galleries) are never 4 or 7
+  images: Discord crops the top tile of a 7-image grid. A 4 goes out as two
+  messages of 2, a 7 as 5 then 2, still at most 9 per message.
 
 ### Added
 - Startup catch-up: on boot the scheduler runs every job whose slot for today
