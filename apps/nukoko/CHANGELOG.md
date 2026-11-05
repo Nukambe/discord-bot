@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **LAST GAME Midorima** added to the SG roster (`roster.js`), out in North
+  America with game version 301 (limited gacha from 2026-11-05) — picked up
+  automatically by `/random-character` and `/builds`.
 - NBA reminders (`jobs/nbaReminders.js`) — chappelly's NBA streams cron
   without the stream links: the day's slate (start time in each viewer's own timezone, matchup, national TV) at
   10:00 ET and a post as each game starts, in the stream-notify channel. The
